@@ -40,3 +40,8 @@ jobs:
           name: TimeDOC-Windows
           path: desktop-app/dist/*.exe
           retention-days: 30
+
+      - name: Publish release (undraft)
+        run: gh release edit v$(node -p "require('./desktop-app/package.json').version") --draft=false --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
