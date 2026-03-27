@@ -1,4 +1,4 @@
-var APP_VERSION = '1.7.3';
+var APP_VERSION = '1.8.0';
 
 // ---- State ----
 var serverUrl = '';
@@ -6,6 +6,7 @@ var token = '';
 var user = null;
 var sessionId = null;
 var sessionStatus = null;
+var currentStream = null;
 
 // Timer
 var timerInterval = null;
@@ -19,6 +20,10 @@ var chunkNumber = 0;
 var chunkStartTime = null;
 var chunkInterval = null;
 var CHUNK_DURATION_MS = 5 * 60 * 1000;
+
+// Connection tracking
+var lastHeartbeatOk = true;
+var reconnectInterval = null;
 
 // ---- DOM ----
 var loginScreen = document.getElementById('login-screen');
@@ -121,6 +126,7 @@ function startRecording() {
     });
   }).then(function (stream) {
     if (!stream) return;
+    currentStream = stream;
     chunkNumber = 0;
     startNewChunk(stream);
     chunkInterval = setInterval(function () {
@@ -135,7 +141,6 @@ function startRecording() {
 
 function startNewChunk(stream) {
   chunkNumber++;
-  // Each recorder gets its OWN local array - prevents cross-contamination
   var myChunks = [];
   recordedChunks = myChunks;
   chunkStartTime = new Date().toISOString();
@@ -144,7 +149,6 @@ function startNewChunk(stream) {
   } catch (e) {
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
   }
-  // Push to local myChunks, NOT global recordedChunks
   mediaRecorder.ondataavailable = function (e) {
     if (e.data.size > 0) myChunks.push(e.data);
   };
@@ -155,7 +159,6 @@ function saveCurrentChunk() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
   var num = chunkNumber;
   var start = chunkStartTime;
-  // recordedChunks points to the current recorder's local array
   var chunks = recordedChunks;
   var recorder = mediaRecorder;
 
@@ -182,22 +185,74 @@ function uploadChunk(blob, num, start, end) {
         if (uploadStatusEl.textContent === 'Chunk #' + num + ' uploaded') uploadStatusEl.textContent = '';
       }, 3000);
     } else {
-      uploadStatusEl.textContent = 'Chunk #' + num + ' failed: ' + (result.error || '');
+      uploadStatusEl.textContent = 'Chunk #' + num + ' upload pending...';
     }
-  }).catch(function (err) {
-    uploadStatusEl.textContent = 'Chunk #' + num + ' failed: ' + err.message;
+  }).catch(function () {
+    uploadStatusEl.textContent = 'Chunk #' + num + ' upload pending...';
   });
 }
 
 function stopRecording() {
   if (chunkInterval) { clearInterval(chunkInterval); chunkInterval = null; }
   saveCurrentChunk();
-  if (mediaRecorder && mediaRecorder.stream) {
-    mediaRecorder.stream.getTracks().forEach(function (t) { t.stop(); });
+  if (currentStream) {
+    currentStream.getTracks().forEach(function (t) { t.stop(); });
+    currentStream = null;
   }
   mediaRecorder = null;
   recordingIndicator.style.display = 'none';
 }
+
+// ---- Heartbeat + Connection Monitor ----
+function sendHeartbeat() {
+  api('POST', '/api/sessions/heartbeat').then(function () {
+    if (!lastHeartbeatOk) {
+      // Connection restored
+      lastHeartbeatOk = true;
+      if (sessionStatus === 'active') {
+        timerStatusEl.textContent = 'Working';
+        timerStatusEl.className = 'timer-status active';
+      }
+    }
+  }).catch(function (err) {
+    lastHeartbeatOk = false;
+    if (err.message === 'No active session') {
+      // Server killed our session (stale cleanup after disconnect/sleep)
+      handleSessionLost();
+    } else {
+      // Network error - show offline but keep timer running
+      timerStatusEl.textContent = 'Offline - reconnecting...';
+      timerStatusEl.className = 'timer-status paused';
+    }
+  });
+}
+
+function handleSessionLost() {
+  // Session was cleaned up by server (internet lost > 5 min, sleep, etc.)
+  // Stop everything locally and show message
+  stopRecording();
+  window.timedoc.stopIdleMonitoring();
+  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+  sessionStatus = null;
+  sessionId = null;
+  pauseTimer();
+  updateControls();
+  uploadStatusEl.textContent = 'Session ended (connection lost). Click Start for new session.';
+}
+
+// ---- System Wake Detection ----
+var lastTickTime = Date.now();
+setInterval(function () {
+  var now = Date.now();
+  var gap = now - lastTickTime;
+  lastTickTime = now;
+
+  // If gap > 30 seconds, system was asleep
+  if (gap > 30000 && sessionStatus) {
+    // System just woke up - check if session still alive
+    sendHeartbeat();
+  }
+}, 5000);
 
 // ---- Idle Detection ----
 if (window.timedoc.onIdleDetected) {
@@ -251,7 +306,6 @@ loginForm.addEventListener('submit', function (e) {
   loginBtn.textContent = 'Logging in...';
   loginBtn.disabled = true;
 
-  // Tell main process the server URL first
   window.timedoc.apiCall('SET_SERVER', serverUrl, {}).then(function () {
     return api('POST', '/api/auth/login', { username: username, password: password });
   }).then(function (data) {
@@ -260,8 +314,8 @@ loginForm.addEventListener('submit', function (e) {
     localStorage.setItem('timedoc_server', serverUrl);
     displayNameEl.textContent = user.display_name;
     if (userAvatar) userAvatar.textContent = user.display_name.charAt(0).toUpperCase();
-    if (dashboardLink) dashboardLink.onclick = function (e) {
-      e.preventDefault();
+    if (dashboardLink) dashboardLink.onclick = function (ev) {
+      ev.preventDefault();
       window.timedoc.openExternal(serverUrl);
     };
     populateWorkDates();
@@ -270,6 +324,25 @@ loginForm.addEventListener('submit', function (e) {
     sessionStatus = null;
     updateControls();
     showScreen(timerScreen);
+
+    // Check if there's already an active session (app restart scenario)
+    api('GET', '/api/sessions/active').then(function (data) {
+      if (data.session) {
+        sessionId = data.session.id;
+        sessionStatus = data.session.status;
+        // Calculate elapsed time
+        var start = new Date(data.session.start_time.replace(' ', 'T') + 'Z');
+        elapsedSeconds = Math.max(0, Math.round((Date.now() - start) / 1000));
+        if (sessionStatus === 'active') startTimer();
+        updateControls();
+        uploadStatusEl.textContent = 'Resumed existing session';
+        setTimeout(function () { uploadStatusEl.textContent = ''; }, 3000);
+
+        // Start heartbeat
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        heartbeatInterval = setInterval(sendHeartbeat, 60000);
+      }
+    }).catch(function () {});
   }).catch(function (err) {
     loginError.textContent = err.message || 'Connection failed';
   }).finally(function () {
@@ -299,15 +372,14 @@ startBtn.addEventListener('click', function () {
       sessionId = data.session.id;
       sessionStatus = 'active';
       elapsedSeconds = 0;
+      lastHeartbeatOk = true;
       startTimer();
       updateControls();
       startRecording();
       window.timedoc.startIdleMonitoring(300);
 
       if (heartbeatInterval) clearInterval(heartbeatInterval);
-      heartbeatInterval = setInterval(function () {
-        api('POST', '/api/sessions/heartbeat').catch(function () {});
-      }, 60000);
+      heartbeatInterval = setInterval(sendHeartbeat, 60000);
     })
     .catch(function (err) {
       alert('Failed to start: ' + err.message);
@@ -320,20 +392,30 @@ startBtn.addEventListener('click', function () {
 
 // ---- Pause ----
 pauseBtn.addEventListener('click', function () {
+  pauseBtn.disabled = true;
   api('POST', '/api/sessions/pause').then(function () {
     sessionStatus = 'paused';
     pauseTimer();
     updateControls();
-  }).catch(function (err) { alert('Pause failed: ' + err.message); });
+  }).catch(function (err) {
+    alert('Pause failed: ' + err.message);
+  }).finally(function () {
+    pauseBtn.disabled = false;
+  });
 });
 
 // ---- Resume ----
 resumeBtn.addEventListener('click', function () {
+  resumeBtn.disabled = true;
   api('POST', '/api/sessions/resume').then(function () {
     sessionStatus = 'active';
     startTimer();
     updateControls();
-  }).catch(function (err) { alert('Resume failed: ' + err.message); });
+  }).catch(function (err) {
+    alert('Resume failed: ' + err.message);
+  }).finally(function () {
+    resumeBtn.disabled = false;
+  });
 });
 
 // ---- Stop ----
@@ -354,7 +436,18 @@ function handleStop() {
     updateControls();
     uploadStatusEl.textContent = 'Session completed';
     setTimeout(function () { uploadStatusEl.textContent = ''; }, 3000);
-  }).catch(function (err) { alert('Stop failed: ' + err.message); });
+  }).catch(function (err) {
+    // If server says no active session, just reset locally
+    if (err.message && err.message.indexOf('No active session') !== -1) {
+      sessionStatus = null;
+      sessionId = null;
+      pauseTimer();
+      updateControls();
+      uploadStatusEl.textContent = 'Session ended';
+    } else {
+      alert('Stop failed: ' + err.message);
+    }
+  });
 }
 
 // ---- Auto-update status ----

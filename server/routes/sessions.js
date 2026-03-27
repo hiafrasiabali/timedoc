@@ -11,6 +11,7 @@ router.use(authMiddleware);
 router.post('/start', (req, res) => {
   const userId = req.user.id;
   const { work_date } = req.body;
+  console.log(`[START] User ${userId} (${req.user.display_name}) requesting start`);
 
   // Check for already active session
   const active = db.prepare(
@@ -18,6 +19,7 @@ router.post('/start', (req, res) => {
   ).get(userId);
 
   if (active) {
+    console.log(`[START] Blocked - already has active session ${active.id}`);
     return res.status(400).json({ error: 'You already have an active session', session_id: active.id });
   }
 
@@ -29,20 +31,29 @@ router.post('/start', (req, res) => {
   ).run(userId, date);
 
   const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(result.lastInsertRowid);
+  console.log(`[START] Created session ${session.id} for user ${userId}`);
   res.status(201).json({ session });
 });
 
 // POST /api/sessions/stop
 router.post('/stop', (req, res) => {
   const userId = req.user.id;
+  const callerIP = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  console.log(`[STOP] Called by user ${userId} (${req.user.display_name}) from ${callerIP}`);
 
   const session = db.prepare(
     "SELECT * FROM sessions WHERE user_id = ? AND status IN ('active', 'paused')"
   ).get(userId);
 
   if (!session) {
+    // Check what sessions this user HAS
+    const recent = db.prepare('SELECT id, status, start_time, end_time FROM sessions WHERE user_id = ? ORDER BY id DESC LIMIT 3').all(userId);
+    console.log(`[STOP] No active session for user ${userId}. Recent:`, JSON.stringify(recent));
     return res.status(400).json({ error: 'No active session' });
   }
+
+  console.log(`[STOP] Stopping session ${session.id} (started: ${session.start_time})`);
+
 
   const now = new Date();
   const nowIso = now.toISOString();
@@ -72,13 +83,15 @@ router.post('/pause', (req, res) => {
     return res.status(400).json({ error: 'No active session to pause' });
   }
 
-  const now = new Date().toISOString();
+  // Store in SQLite format for consistent parsing
+  const now = new Date().toISOString().replace('T', ' ').replace('Z', '').slice(0, 19);
 
   db.prepare(
     'UPDATE sessions SET status = ?, paused_at = ? WHERE id = ?'
   ).run('paused', now, session.id);
 
   const updated = db.prepare('SELECT * FROM sessions WHERE id = ?').get(session.id);
+  console.log(`[PAUSE] Session ${session.id} paused at ${now}`);
   res.json({ session: updated });
 });
 
@@ -95,15 +108,18 @@ router.post('/resume', (req, res) => {
   }
 
   const now = new Date();
-  const pausedAt = new Date(session.paused_at);
+  // Parse paused_at - could be SQLite format or ISO format
+  const pausedAtStr = session.paused_at || '';
+  const pausedAt = new Date(pausedAtStr.includes('T') ? pausedAtStr : pausedAtStr.replace(' ', 'T') + 'Z');
   const breakMs = now - pausedAt;
-  const additionalBreakMinutes = Math.round(breakMs / 60000);
+  const additionalBreakMinutes = Math.max(0, Math.round(breakMs / 60000));
 
   db.prepare(
     'UPDATE sessions SET status = ?, break_minutes = break_minutes + ?, paused_at = NULL WHERE id = ?'
   ).run('active', additionalBreakMinutes, session.id);
 
   const updated = db.prepare('SELECT * FROM sessions WHERE id = ?').get(session.id);
+  console.log(`[RESUME] Session ${session.id} resumed, added ${additionalBreakMinutes}min break`);
   res.json({ session: updated });
 });
 

@@ -126,24 +126,17 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-downloaded', (info) => {
     sendToRenderer('update:status', 'ready');
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'TimeDOC v' + info.version + ' is ready. Restart now to update.',
-      buttons: ['Restart Now', 'Later'],
-    }).then((result) => {
-      if (result.response === 0) {
-        app.isQuitting = true;
-        autoUpdater.quitAndInstall();
-      }
-    });
+    // Auto-install immediately - no waiting
+    app.isQuitting = true;
+    autoUpdater.quitAndInstall(true, true);
   });
 
   autoUpdater.on('error', () => {
     sendToRenderer('update:status', '');
   });
 
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
+  // Force check immediately on app open
+  autoUpdater.checkForUpdates().catch(() => {});
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 30 * 60 * 1000);
 }
 
