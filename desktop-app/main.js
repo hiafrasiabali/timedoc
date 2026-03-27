@@ -226,6 +226,24 @@ ipcMain.on('idle:stop-monitoring', () => {
   if (idleCheckInterval) { clearInterval(idleCheckInterval); idleCheckInterval = null; }
 });
 
+// Upload chunk from temp file (no IPC data serialization)
+ipcMain.handle('api:upload-file', async (event, { sessionId, chunkNumber, startTime, endTime, filePath }) => {
+  const fs = require('fs');
+  if (!fs.existsSync(filePath)) return { ok: false, error: 'Temp file missing' };
+
+  const fileBuffer = fs.readFileSync(filePath);
+  console.log('[UPLOAD] Chunk ' + chunkNumber + ' for session ' + sessionId + ' (' + fileBuffer.length + ' bytes from file)');
+
+  const result = await uploadChunkViaNode({
+    sessionId, chunkNumber, startTime, endTime,
+    fileBuffer: fileBuffer,
+  });
+
+  // Clean up temp file
+  try { fs.unlinkSync(filePath); } catch {}
+  return result;
+});
+
 // Manual update check
 ipcMain.handle('app:check-update', () => {
   autoUpdater.checkForUpdates().catch(() => {});
@@ -238,14 +256,16 @@ ipcMain.handle('app:open-external', (event, url) => {
 });
 
 // ---- Upload via multipart (for recordings) ----
-function uploadChunkViaNode({ sessionId, chunkNumber, startTime, endTime, rawData, base64Data }) {
+function uploadChunkViaNode({ sessionId, chunkNumber, startTime, endTime, fileBuffer, rawData, base64Data }) {
   return new Promise((resolve) => {
     const url = new URL('/api/recordings/upload', storedServerUrl);
     const isHttps = url.protocol === 'https:';
     const transport = isHttps ? https : http;
 
     const boundary = '----TimeDOC' + Date.now();
-    const fileBuffer = rawData ? Buffer.from(rawData) : Buffer.from(base64Data, 'base64');
+    if (!Buffer.isBuffer(fileBuffer)) {
+      fileBuffer = rawData ? Buffer.from(rawData) : Buffer.from(base64Data || '', 'base64');
+    }
 
     let body = '';
     const fields = { session_id: String(sessionId), chunk_number: String(chunkNumber), start_time: startTime, end_time: endTime };

@@ -1,4 +1,4 @@
-var APP_VERSION = '1.7.0';
+var APP_VERSION = '1.7.1';
 
 // ---- State ----
 var serverUrl = '';
@@ -168,16 +168,9 @@ function saveCurrentChunk() {
 function uploadChunk(blob, num, start, end) {
   uploadStatusEl.textContent = 'Uploading chunk #' + num + ' (' + Math.round(blob.size / 1024) + ' KB)...';
 
-  // Convert to Uint8Array and send via IPC (avoids base64 corruption)
+  // Write to temp file via preload (bypasses IPC serialization completely)
   blob.arrayBuffer().then(function (buffer) {
-    var uint8 = new Uint8Array(buffer);
-    return window.timedoc.apiCall('UPLOAD', '/api/recordings/upload', {
-      sessionId: sessionId,
-      chunkNumber: num,
-      startTime: start,
-      endTime: end,
-      rawData: Array.from(uint8),
-    });
+    return window.timedoc.saveAndUploadChunk(buffer, sessionId, num, start, end);
   }).then(function (result) {
     if (result.ok) {
       uploadStatusEl.textContent = 'Chunk #' + num + ' uploaded';
