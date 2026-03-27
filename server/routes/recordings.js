@@ -147,4 +147,66 @@ router.get('/:id/stream', (req, res, next) => {
   }
 });
 
+// GET /api/recordings/:id/thumbnail
+router.get('/:id/thumbnail', (req, res, next) => {
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authMiddleware, (req, res) => {
+  const chunk = db.prepare('SELECT * FROM recording_chunks WHERE id = ?').get(req.params.id);
+  if (!chunk) return res.status(404).json({ error: 'Not found' });
+
+  const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(chunk.session_id);
+  if (req.user.role !== 'admin' && session.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const videoPath = path.join(UPLOADS_DIR, chunk.file_path);
+  const thumbPath = videoPath.replace('.webm', '_thumb.jpg');
+
+  // If thumbnail already exists, serve it
+  if (fs.existsSync(thumbPath)) {
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return fs.createReadStream(thumbPath).pipe(res);
+  }
+
+  // Generate thumbnail from middle of video
+  if (!fs.existsSync(videoPath)) {
+    return res.status(404).json({ error: 'Video not found' });
+  }
+
+  execFile('ffmpeg', [
+    '-i', videoPath,
+    '-ss', '2',
+    '-frames:v', '1',
+    '-vf', 'scale=320:-1',
+    '-q:v', '5',
+    '-y', thumbPath,
+  ], { timeout: 10000 }, (err) => {
+    if (err || !fs.existsSync(thumbPath)) {
+      // Fallback: try first frame
+      execFile('ffmpeg', [
+        '-i', videoPath,
+        '-frames:v', '1',
+        '-vf', 'scale=320:-1',
+        '-q:v', '5',
+        '-y', thumbPath,
+      ], { timeout: 10000 }, (err2) => {
+        if (err2 || !fs.existsSync(thumbPath)) {
+          return res.status(500).json({ error: 'Failed to generate thumbnail' });
+        }
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        fs.createReadStream(thumbPath).pipe(res);
+      });
+      return;
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    fs.createReadStream(thumbPath).pipe(res);
+  });
+});
+
 module.exports = router;
