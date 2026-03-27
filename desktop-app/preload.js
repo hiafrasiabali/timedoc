@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, desktopCapturer } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('timedoc', {
   // Auth
@@ -30,7 +30,6 @@ contextBridge.exposeInMainWorld('timedoc', {
   // App utils
   getTempPath: () => ipcRenderer.invoke('app:get-temp-path'),
 
-  // Desktop capturer - get screen sources for recording
-  getScreenSources: () =>
-    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }),
+  // Desktop capturer - get screen sources via main process
+  getScreenSources: () => ipcRenderer.invoke('app:get-screen-sources'),
 });

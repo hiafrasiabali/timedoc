@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, desktopCapturer } = require('electron');
 const path = require('path');
 
 let mainWindow = null;
@@ -144,6 +144,15 @@ ipcMain.on('idle:stop-monitoring', () => {
     clearInterval(idleCheckInterval);
     idleCheckInterval = null;
   }
+});
+
+// Get screen sources for recording
+ipcMain.handle('app:get-screen-sources', async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 0, height: 0 },
+  });
+  return sources.map((s) => ({ id: s.id, name: s.name }));
 });
 
 // Get temp path for recordings
