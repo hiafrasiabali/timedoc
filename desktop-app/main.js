@@ -97,38 +97,63 @@ app.on('window-all-closed', () => {
 
 // Auth
 ipcMain.handle('auth:login', async (event, { serverUrl, username, password }) => {
-  const { login } = require('./src/auth');
-  return login(serverUrl, username, password);
+  try {
+    const { login } = require('./src/auth');
+    const result = await login(serverUrl, username, password);
+    return { success: true, data: result };
+  } catch (err) {
+    return { success: false, error: err.message || 'Connection failed' };
+  }
 });
 
 // Session control
 ipcMain.handle('session:start', async (event, { serverUrl, token, workDate }) => {
-  const { startSession } = require('./src/auth');
-  const result = await startSession(serverUrl, token, workDate);
-  activeSessionInfo = { serverUrl, token };
-  return result;
+  try {
+    const { startSession } = require('./src/auth');
+    const result = await startSession(serverUrl, token, workDate);
+    activeSessionInfo = { serverUrl, token };
+    return { success: true, data: result };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('session:heartbeat', async (event, { serverUrl, token }) => {
-  const { heartbeat } = require('./src/auth');
-  return heartbeat(serverUrl, token);
+  try {
+    const { heartbeat } = require('./src/auth');
+    return await heartbeat(serverUrl, token);
+  } catch {
+    return null;
+  }
 });
 
 ipcMain.handle('session:stop', async (event, { serverUrl, token }) => {
-  const { stopSession } = require('./src/auth');
-  const result = await stopSession(serverUrl, token);
-  activeSessionInfo = null;
-  return result;
+  try {
+    const { stopSession } = require('./src/auth');
+    const result = await stopSession(serverUrl, token);
+    activeSessionInfo = null;
+    return { success: true, data: result };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('session:pause', async (event, { serverUrl, token }) => {
-  const { pauseSession } = require('./src/auth');
-  return pauseSession(serverUrl, token);
+  try {
+    const { pauseSession } = require('./src/auth');
+    return { success: true, data: await pauseSession(serverUrl, token) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('session:resume', async (event, { serverUrl, token }) => {
-  const { resumeSession } = require('./src/auth');
-  return resumeSession(serverUrl, token);
+  try {
+    const { resumeSession } = require('./src/auth');
+    return { success: true, data: await resumeSession(serverUrl, token) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 // Recording control - receive base64 data from renderer, save to temp, upload

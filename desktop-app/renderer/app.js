@@ -265,12 +265,14 @@ window.timedoc.onIdleDetected(async (data) => {
   if (sessionStatus === 'active') {
     // Auto-pause on idle
     try {
-      await window.timedoc.pauseSession(serverUrl, token);
-      sessionStatus = 'paused';
-      pauseTimer();
-      updateControls();
-      timerStatus.textContent = 'Paused (idle detected)';
-      timerStatus.className = 'timer-status paused';
+      const r = await window.timedoc.pauseSession(serverUrl, token);
+      if (r.success) {
+        sessionStatus = 'paused';
+        pauseTimer();
+        updateControls();
+        timerStatus.textContent = 'Paused (idle detected)';
+        timerStatus.className = 'timer-status paused';
+      }
     } catch (err) {
       console.error('Auto-pause failed:', err);
     }
@@ -329,7 +331,11 @@ loginForm.addEventListener('submit', async (e) => {
   }
 
   try {
-    const result = await window.timedoc.login(serverUrl, username, password);
+    const response = await window.timedoc.login(serverUrl, username, password);
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+    const result = response.data;
     if (!result || !result.token) {
       throw new Error('Invalid response from server');
     }
@@ -371,8 +377,9 @@ startBtn.addEventListener('click', async () => {
 
   try {
     const workDate = workDateSelect.value;
-    const result = await window.timedoc.startSession(serverUrl, token, workDate);
-    sessionId = result.session.id;
+    const response = await window.timedoc.startSession(serverUrl, token, workDate);
+    if (!response.success) throw new Error(response.error);
+    sessionId = response.data.session.id;
     sessionStatus = 'active';
     elapsedSeconds = 0;
     startTimer();
@@ -400,7 +407,8 @@ startBtn.addEventListener('click', async () => {
 // Pause
 pauseBtn.addEventListener('click', async () => {
   try {
-    await window.timedoc.pauseSession(serverUrl, token);
+    const r = await window.timedoc.pauseSession(serverUrl, token);
+    if (!r.success) throw new Error(r.error);
     sessionStatus = 'paused';
     pauseTimer();
     updateControls();
@@ -412,7 +420,8 @@ pauseBtn.addEventListener('click', async () => {
 // Resume
 resumeBtn.addEventListener('click', async () => {
   try {
-    await window.timedoc.resumeSession(serverUrl, token);
+    const r = await window.timedoc.resumeSession(serverUrl, token);
+    if (!r.success) throw new Error(r.error);
     sessionStatus = 'active';
     startTimer();
     updateControls();
@@ -432,7 +441,8 @@ async function handleStop() {
     stopRecording();
     window.timedoc.stopIdleMonitoring();
     if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-    await window.timedoc.stopSession(serverUrl, token);
+    const r = await window.timedoc.stopSession(serverUrl, token);
+    if (!r.success) throw new Error(r.error);
     sessionStatus = null;
     sessionId = null;
     pauseTimer();
