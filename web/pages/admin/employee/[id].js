@@ -18,14 +18,22 @@ export default function EmployeeDetail() {
   const [loading, setLoading] = useState(true);
   const [chunksLoading, setChunksLoading] = useState(false);
 
-  function todayStr() { return new Date().toISOString().slice(0, 10); }
-  function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+  // Use UTC dates to match server
+  function utcToday() { return new Date().toISOString().slice(0, 10); }
+  function utcYesterday() { const d = new Date(); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); }
 
   useEffect(() => {
     if (!id) return;
-    setFrom(todayStr());
-    setTo(todayStr());
+    // Load last 7 days so we have data to detect most recent date
+    const to = utcToday();
+    const fr = new Date(); fr.setUTCDate(fr.getUTCDate() - 7);
+    setFrom(fr.toISOString().slice(0, 10));
+    setTo(to);
   }, [id]);
+
+  // Detect most recent date with data and the one before it
+  const latestDate = dailyData.length > 0 ? dailyData[0].date : utcToday();
+  const secondDate = dailyData.length > 1 ? dailyData[1].date : utcYesterday();
 
   useEffect(() => {
     if (from && to && id) loadSessions();
@@ -114,8 +122,8 @@ export default function EmployeeDetail() {
       </div>
 
       <div className="date-nav">
-        <a href="#" className={from === todayStr() && to === todayStr() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(todayStr()); setTo(todayStr()); }}>Today</a>
-        <a href="#" className={from === yesterdayStr() && to === yesterdayStr() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(yesterdayStr()); setTo(yesterdayStr()); }}>Yesterday</a>
+        <a href="#" className={from === latestDate && to === latestDate ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(latestDate); setTo(latestDate); }}>Today ({latestDate})</a>
+        <a href="#" className={from === secondDate && to === secondDate ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(secondDate); setTo(secondDate); }}>Yesterday ({secondDate})</a>
         <span style={{ color: 'var(--border)' }}>|</span>
         <label>From:</label>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
