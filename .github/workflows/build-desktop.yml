@@ -28,9 +28,11 @@ jobs:
         working-directory: desktop-app
         run: npm install
 
-      - name: Build Windows installer
+      - name: Build and publish Windows installer
         working-directory: desktop-app
-        run: npm run build
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -38,15 +40,3 @@ jobs:
           name: TimeDOC-Windows
           path: desktop-app/dist/*.exe
           retention-days: 30
-
-      - name: Create Release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.run_number }}
-          name: TimeDOC v1.0.${{ github.run_number }}
-          files: desktop-app/dist/*.exe
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
