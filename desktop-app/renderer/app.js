@@ -1,4 +1,4 @@
-var APP_VERSION = '1.4.0';
+var APP_VERSION = '1.4.1';
 
 // ---- State ----
 var serverUrl = '';
@@ -41,12 +41,40 @@ var versionDisplay = document.getElementById('version-display');
 
 if (versionDisplay) versionDisplay.textContent = 'v' + APP_VERSION;
 
+// ---- Debug Log ----
+var debugLog = document.getElementById('debug-log');
+var toggleDebug = document.getElementById('toggle-debug');
+if (toggleDebug) {
+  toggleDebug.addEventListener('click', function () {
+    if (debugLog.style.display === 'none') {
+      debugLog.style.display = 'block';
+      toggleDebug.textContent = 'Hide Debug';
+    } else {
+      debugLog.style.display = 'none';
+      toggleDebug.textContent = 'Show Debug';
+    }
+  });
+}
+
+function log(msg) {
+  var time = new Date().toLocaleTimeString();
+  var line = document.createElement('div');
+  line.textContent = time + ' ' + msg;
+  if (debugLog) {
+    debugLog.appendChild(line);
+    debugLog.scrollTop = debugLog.scrollHeight;
+  }
+}
+
 // ---- API helper (goes through main process Node.js http) ----
 function api(method, path, body) {
+  log('>> ' + method + ' ' + path);
   return window.timedoc.apiCall(method, path, body || {}).then(function (result) {
     if (!result.ok) {
+      log('<< ERROR: ' + (result.error || result.status));
       throw new Error(result.error || 'Request failed');
     }
+    log('<< OK');
     return result.data;
   });
 }

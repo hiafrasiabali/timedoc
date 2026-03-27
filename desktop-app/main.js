@@ -125,29 +125,40 @@ let storedToken = '';
 ipcMain.handle('api:call', async (event, { method, path: apiPath, body }) => {
   // Special methods
   if (method === 'SET_SERVER') {
-    storedServerUrl = apiPath; // apiPath contains the URL for SET_SERVER
+    storedServerUrl = apiPath;
+    console.log('[IPC] SET_SERVER:', storedServerUrl);
     return { ok: true };
   }
 
   if (method === 'UPLOAD') {
-    // body contains { sessionId, chunkNumber, startTime, endTime, base64Data }
+    console.log('[IPC] UPLOAD chunk', body.chunkNumber, 'for session', body.sessionId);
     return uploadChunkViaNode(body);
   }
 
+  console.log('[IPC]', method, apiPath, '| server:', storedServerUrl, '| hasToken:', !!storedToken);
   const result = await nodeApiCall(storedServerUrl, method, apiPath, storedToken, body);
+  console.log('[IPC] Result:', apiPath, result.ok ? 'OK' : 'FAIL:' + result.error);
 
   // Track session lifecycle
   if (result.ok && apiPath === '/api/auth/login' && result.data && result.data.token) {
     storedToken = result.data.token;
+    console.log('[IPC] Token stored for user:', result.data.user.display_name);
   }
   if (result.ok && apiPath === '/api/sessions/start') {
     activeSessionInfo = { serverUrl: storedServerUrl, token: storedToken };
+    console.log('[IPC] Session started, tracking for quit cleanup');
   }
   if (result.ok && apiPath === '/api/sessions/stop') {
     activeSessionInfo = null;
+    console.log('[IPC] Session stopped, cleared quit cleanup');
   }
 
   return result;
+});
+
+// Log before-quit
+app.on('will-quit', () => {
+  console.log('[APP] will-quit, activeSession:', !!activeSessionInfo);
 });
 
 // ---- Desktop capturer ----
