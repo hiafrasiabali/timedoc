@@ -182,14 +182,14 @@ ipcMain.handle('app:open-external', (event, url) => {
 });
 
 // ---- Upload via multipart (for recordings) ----
-function uploadChunkViaNode({ sessionId, chunkNumber, startTime, endTime, base64Data }) {
+function uploadChunkViaNode({ sessionId, chunkNumber, startTime, endTime, rawData, base64Data }) {
   return new Promise((resolve) => {
     const url = new URL('/api/recordings/upload', storedServerUrl);
     const isHttps = url.protocol === 'https:';
     const transport = isHttps ? https : http;
 
     const boundary = '----TimeDOC' + Date.now();
-    const fileBuffer = Buffer.from(base64Data, 'base64');
+    const fileBuffer = rawData ? Buffer.from(rawData) : Buffer.from(base64Data, 'base64');
 
     let body = '';
     const fields = { session_id: String(sessionId), chunk_number: String(chunkNumber), start_time: startTime, end_time: endTime };

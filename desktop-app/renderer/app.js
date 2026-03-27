@@ -1,4 +1,4 @@
-var APP_VERSION = '1.5.2';
+var APP_VERSION = '1.6.0';
 
 // ---- State ----
 var serverUrl = '';
@@ -168,28 +168,28 @@ function saveCurrentChunk() {
 function uploadChunk(blob, num, start, end) {
   uploadStatusEl.textContent = 'Uploading chunk #' + num + ' (' + Math.round(blob.size / 1024) + ' KB)...';
 
-  // Convert to base64 and send via IPC to main process
-  var reader = new FileReader();
-  reader.onload = function () {
-    var base64 = reader.result.split(',')[1];
-    window.timedoc.apiCall('UPLOAD', '/api/recordings/upload', {
+  // Convert to Uint8Array and send via IPC (avoids base64 corruption)
+  blob.arrayBuffer().then(function (buffer) {
+    var uint8 = new Uint8Array(buffer);
+    return window.timedoc.apiCall('UPLOAD', '/api/recordings/upload', {
       sessionId: sessionId,
       chunkNumber: num,
       startTime: start,
       endTime: end,
-      base64Data: base64,
-    }).then(function (result) {
-      if (result.ok) {
-        uploadStatusEl.textContent = 'Chunk #' + num + ' uploaded';
-        setTimeout(function () {
-          if (uploadStatusEl.textContent === 'Chunk #' + num + ' uploaded') uploadStatusEl.textContent = '';
-        }, 3000);
-      } else {
-        uploadStatusEl.textContent = 'Chunk #' + num + ' failed: ' + (result.error || '');
-      }
+      rawData: Array.from(uint8),
     });
-  };
-  reader.readAsDataURL(blob);
+  }).then(function (result) {
+    if (result.ok) {
+      uploadStatusEl.textContent = 'Chunk #' + num + ' uploaded';
+      setTimeout(function () {
+        if (uploadStatusEl.textContent === 'Chunk #' + num + ' uploaded') uploadStatusEl.textContent = '';
+      }, 3000);
+    } else {
+      uploadStatusEl.textContent = 'Chunk #' + num + ' failed: ' + (result.error || '');
+    }
+  }).catch(function (err) {
+    uploadStatusEl.textContent = 'Chunk #' + num + ' failed: ' + err.message;
+  });
 }
 
 function stopRecording() {

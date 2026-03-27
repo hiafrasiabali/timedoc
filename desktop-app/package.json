@@ -1,6 +1,6 @@
 {
   "name": "timedoc",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "TimeDOC - Employee Time Tracking & Screen Recording",
   "main": "main.js",
   "scripts": {
