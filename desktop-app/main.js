@@ -1,10 +1,62 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, desktopCapturer } = require('electron');
 const path = require('path');
+const http = require('http');
+const https = require('https');
 
 let mainWindow = null;
 let tray = null;
-let activeSessionInfo = null; // { serverUrl, token } for quit cleanup
+let activeSessionInfo = null;
 
+// ---- Generic API call via Node http ----
+function nodeApiCall(serverUrl, method, apiPath, token, body) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(apiPath, serverUrl);
+    const isHttps = url.protocol === 'https:';
+    const transport = isHttps ? https : http;
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+
+    const bodyStr = body ? JSON.stringify(body) : '';
+
+    const req = transport.request({
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname,
+      method: method,
+      headers: headers,
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (res.statusCode >= 400) {
+            resolve({ ok: false, status: res.statusCode, error: json.error || 'HTTP ' + res.statusCode });
+          } else {
+            resolve({ ok: true, data: json });
+          }
+        } catch (e) {
+          resolve({ ok: false, status: res.statusCode, error: 'Invalid response' });
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      resolve({ ok: false, status: 0, error: err.message });
+    });
+
+    req.setTimeout(15000, () => {
+      req.destroy();
+      resolve({ ok: false, status: 0, error: 'Request timeout' });
+    });
+
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+// ---- Window ----
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 380,
@@ -17,7 +69,6 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false, // Allow fetch from file:// to http://
     },
   });
 
@@ -35,64 +86,26 @@ function createWindow() {
 function createTray() {
   try {
     tray = new Tray(path.join(__dirname, 'renderer', 'icon.png'));
-  } catch {
-    return;
-  }
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Show TimeDOC',
-      click: () => { if (mainWindow) mainWindow.show(); },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => { app.isQuitting = true; app.quit(); },
-    },
-  ]);
+  } catch { return; }
 
   tray.setToolTip('TimeDOC');
-  tray.setContextMenu(contextMenu);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show TimeDOC', click: () => { if (mainWindow) mainWindow.show(); } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
+  ]));
   tray.on('click', () => { if (mainWindow) mainWindow.show(); });
 }
 
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
-});
+app.whenReady().then(() => { createWindow(); createTray(); });
 
-// Auto-stop session on quit
 app.on('before-quit', async (e) => {
   app.isQuitting = true;
-
   if (activeSessionInfo) {
     e.preventDefault();
     const { serverUrl, token } = activeSessionInfo;
     activeSessionInfo = null;
-
-    try {
-      const http = require(serverUrl.startsWith('https') ? 'https' : 'http');
-      const url = new URL('/api/sessions/stop', serverUrl);
-      await new Promise((resolve) => {
-        const req = http.request({
-          hostname: url.hostname,
-          port: url.port || (url.protocol === 'https:' ? 443 : 80),
-          path: url.pathname,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token,
-          },
-        }, () => resolve());
-        req.on('error', () => resolve());
-        req.setTimeout(5000, () => { req.destroy(); resolve(); });
-        req.write('{}');
-        req.end();
-      });
-    } catch (err) {
-      console.error('Failed to stop session on quit:', err.message);
-    }
-
+    await nodeApiCall(serverUrl, 'POST', '/api/sessions/stop', token, {});
     app.quit();
   }
 });
@@ -101,18 +114,40 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// ---- IPC Handlers ----
+// ---- IPC: Generic API call ----
+// Renderer sends { method, path, body } and we add serverUrl + token from stored state
+let storedServerUrl = '';
+let storedToken = '';
 
-// Session lifecycle - renderer notifies us so we can cleanup on quit
-ipcMain.on('session:started', (event, { serverUrl, token }) => {
-  activeSessionInfo = { serverUrl, token };
+ipcMain.handle('api:call', async (event, { method, path: apiPath, body }) => {
+  // Special methods
+  if (method === 'SET_SERVER') {
+    storedServerUrl = apiPath; // apiPath contains the URL for SET_SERVER
+    return { ok: true };
+  }
+
+  if (method === 'UPLOAD') {
+    // body contains { sessionId, chunkNumber, startTime, endTime, base64Data }
+    return uploadChunkViaNode(body);
+  }
+
+  const result = await nodeApiCall(storedServerUrl, method, apiPath, storedToken, body);
+
+  // Track session lifecycle
+  if (result.ok && apiPath === '/api/auth/login' && result.data && result.data.token) {
+    storedToken = result.data.token;
+  }
+  if (result.ok && apiPath === '/api/sessions/start') {
+    activeSessionInfo = { serverUrl: storedServerUrl, token: storedToken };
+  }
+  if (result.ok && apiPath === '/api/sessions/stop') {
+    activeSessionInfo = null;
+  }
+
+  return result;
 });
 
-ipcMain.on('session:stopped', () => {
-  activeSessionInfo = null;
-});
-
-// Desktop capturer - must run in main process
+// ---- Desktop capturer ----
 ipcMain.handle('app:get-screen-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
@@ -121,13 +156,12 @@ ipcMain.handle('app:get-screen-sources', async () => {
   return sources.map((s) => ({ id: s.id, name: s.name }));
 });
 
-// Idle detection - uses powerMonitor
+// ---- Idle detection ----
 let idleCheckInterval = null;
 
 ipcMain.on('idle:start-monitoring', (event, { idleThresholdSeconds }) => {
   const threshold = idleThresholdSeconds || 300;
   if (idleCheckInterval) clearInterval(idleCheckInterval);
-
   idleCheckInterval = setInterval(() => {
     const idleTime = powerMonitor.getSystemIdleTime();
     if (idleTime >= threshold) {
@@ -137,8 +171,53 @@ ipcMain.on('idle:start-monitoring', (event, { idleThresholdSeconds }) => {
 });
 
 ipcMain.on('idle:stop-monitoring', () => {
-  if (idleCheckInterval) {
-    clearInterval(idleCheckInterval);
-    idleCheckInterval = null;
-  }
+  if (idleCheckInterval) { clearInterval(idleCheckInterval); idleCheckInterval = null; }
+});
+
+// ---- Upload via multipart (for recordings) ----
+function uploadChunkViaNode({ sessionId, chunkNumber, startTime, endTime, base64Data }) {
+  return new Promise((resolve) => {
+    const url = new URL('/api/recordings/upload', storedServerUrl);
+    const isHttps = url.protocol === 'https:';
+    const transport = isHttps ? https : http;
+
+    const boundary = '----TimeDOC' + Date.now();
+    const fileBuffer = Buffer.from(base64Data, 'base64');
+
+    let body = '';
+    const fields = { session_id: String(sessionId), chunk_number: String(chunkNumber), start_time: startTime, end_time: endTime };
+    for (const [k, v] of Object.entries(fields)) {
+      body += '--' + boundary + '\r\n';
+      body += 'Content-Disposition: form-data; name="' + k + '"\r\n\r\n';
+      body += v + '\r\n';
+    }
+
+    const fileHeader = '--' + boundary + '\r\nContent-Disposition: form-data; name="chunk"; filename="chunk_' + chunkNumber + '.webm"\r\nContent-Type: video/webm\r\n\r\n';
+    const fileFooter = '\r\n--' + boundary + '--\r\n';
+
+    const bodyBuffer = Buffer.concat([
+      Buffer.from(body), Buffer.from(fileHeader), fileBuffer, Buffer.from(fileFooter)
+    ]);
+
+    const req = transport.request({
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80),
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'multipart/form-data; boundary=' + boundary,
+        'Content-Length': bodyBuffer.length,
+        'Authorization': 'Bearer ' + storedToken,
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => data += c);
+      res.on('end', () => resolve({ ok: res.statusCode < 400, status: res.statusCode }));
+    });
+
+    req.on('error', (err) => resolve({ ok: false, error: err.message }));
+    req.setTimeout(60000, () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
+    req.write(bodyBuffer);
+    req.end();
+  });
 });

@@ -1,70 +1,54 @@
-const APP_VERSION = '1.1.1';
+var APP_VERSION = '1.2.0';
 
 // ---- State ----
-let serverUrl = '';
-let token = '';
-let user = null;
-let sessionId = null;
-let sessionStatus = null; // 'active', 'paused', null
+var serverUrl = '';
+var token = '';
+var user = null;
+var sessionId = null;
+var sessionStatus = null;
 
 // Timer
-let timerInterval = null;
-let elapsedSeconds = 0;
-let heartbeatInterval = null;
+var timerInterval = null;
+var elapsedSeconds = 0;
+var heartbeatInterval = null;
 
 // Recording
-let mediaRecorder = null;
-let recordedChunks = [];
-let chunkNumber = 0;
-let chunkStartTime = null;
-let chunkInterval = null;
-const CHUNK_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+var mediaRecorder = null;
+var recordedChunks = [];
+var chunkNumber = 0;
+var chunkStartTime = null;
+var chunkInterval = null;
+var CHUNK_DURATION_MS = 5 * 60 * 1000;
 
-// ---- DOM Elements ----
-const loginScreen = document.getElementById('login-screen');
-const timerScreen = document.getElementById('timer-screen');
-const loginForm = document.getElementById('login-form');
-const loginError = document.getElementById('login-error');
-const loginBtn = document.getElementById('login-btn');
-const displayName = document.getElementById('display-name');
-const logoutBtn = document.getElementById('logout-btn');
-const timerDisplay = document.getElementById('timer-display');
-const timerStatus = document.getElementById('timer-status');
-const workDateSelect = document.getElementById('work-date');
-const startBtn = document.getElementById('start-btn');
-const pauseBtn = document.getElementById('pause-btn');
-const resumeBtn = document.getElementById('resume-btn');
-const stopBtn = document.getElementById('stop-btn');
-const uploadStatus = document.getElementById('upload-status');
-const recordingIndicator = document.getElementById('recording-indicator');
-const versionDisplay = document.getElementById('version-display');
+// ---- DOM ----
+var loginScreen = document.getElementById('login-screen');
+var timerScreen = document.getElementById('timer-screen');
+var loginForm = document.getElementById('login-form');
+var loginError = document.getElementById('login-error');
+var loginBtn = document.getElementById('login-btn');
+var displayNameEl = document.getElementById('display-name');
+var logoutBtn = document.getElementById('logout-btn');
+var timerDisplay = document.getElementById('timer-display');
+var timerStatusEl = document.getElementById('timer-status');
+var workDateSelect = document.getElementById('work-date');
+var startBtn = document.getElementById('start-btn');
+var pauseBtn = document.getElementById('pause-btn');
+var resumeBtn = document.getElementById('resume-btn');
+var stopBtn = document.getElementById('stop-btn');
+var uploadStatusEl = document.getElementById('upload-status');
+var recordingIndicator = document.getElementById('recording-indicator');
+var versionDisplay = document.getElementById('version-display');
 
 if (versionDisplay) versionDisplay.textContent = 'v' + APP_VERSION;
 
-// ---- Direct API calls (no IPC needed) ----
-async function apiCall(method, path, body) {
-  const options = {
-    method,
-    headers: {},
-  };
-
-  if (token) {
-    options.headers['Authorization'] = 'Bearer ' + token;
-  }
-
-  if (body) {
-    options.headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(body);
-  }
-
-  const res = await fetch(serverUrl + path, options);
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.error || 'HTTP ' + res.status);
-  }
-
-  return data;
+// ---- API helper (goes through main process Node.js http) ----
+function api(method, path, body) {
+  return window.timedoc.apiCall(method, path, body || {}).then(function (result) {
+    if (!result.ok) {
+      throw new Error(result.error || 'Request failed');
+    }
+    return result.data;
+  });
 }
 
 // ---- Screens ----
@@ -74,16 +58,16 @@ function showScreen(screen) {
   screen.classList.add('active');
 }
 
-// ---- Work Date Dropdown ----
+// ---- Work Dates ----
 function populateWorkDates() {
   workDateSelect.innerHTML = '';
-  const today = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
+  var today = new Date();
+  for (var i = 0; i < 7; i++) {
+    var d = new Date(today);
     d.setDate(today.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const label = i === 0 ? dateStr + ' (Today)' : i === 1 ? dateStr + ' (Yesterday)' : dateStr;
-    const opt = document.createElement('option');
+    var dateStr = d.toISOString().slice(0, 10);
+    var label = i === 0 ? dateStr + ' (Today)' : i === 1 ? dateStr + ' (Yesterday)' : dateStr;
+    var opt = document.createElement('option');
     opt.value = dateStr;
     opt.textContent = label;
     workDateSelect.appendChild(opt);
@@ -91,11 +75,11 @@ function populateWorkDates() {
 }
 
 // ---- Timer ----
-function formatTime(seconds) {
-  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
-  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-  const s = String(seconds % 60).padStart(2, '0');
-  return h + ':' + m + ':' + s;
+function formatTime(s) {
+  var h = String(Math.floor(s / 3600)).padStart(2, '0');
+  var m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  var sec = String(s % 60).padStart(2, '0');
+  return h + ':' + m + ':' + sec;
 }
 
 function startTimer() {
@@ -107,10 +91,7 @@ function startTimer() {
 }
 
 function pauseTimer() {
-  if (timerInterval) {
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 }
 
 function resetTimer() {
@@ -120,19 +101,17 @@ function resetTimer() {
 }
 
 // ---- Recording ----
-async function startRecording() {
-  try {
-    var sources = await window.timedoc.getScreenSources();
+function startRecording() {
+  window.timedoc.getScreenSources().then(function (sources) {
     if (!sources || sources.length === 0) {
-      throw new Error('No screen sources found');
+      uploadStatusEl.textContent = 'No screen source found';
+      return;
     }
-
-    var screenSource = sources[0];
-    var stream = await navigator.mediaDevices.getUserMedia({
+    return navigator.mediaDevices.getUserMedia({
       video: {
         mandatory: {
           chromeMediaSource: 'desktop',
-          chromeMediaSourceId: screenSource.id,
+          chromeMediaSourceId: sources[0].id,
           maxWidth: 1280,
           maxHeight: 720,
           maxFrameRate: 1,
@@ -140,168 +119,128 @@ async function startRecording() {
       },
       audio: false,
     });
-
+  }).then(function (stream) {
+    if (!stream) return;
     chunkNumber = 0;
     startNewChunk(stream);
-
     chunkInterval = setInterval(function () {
       saveCurrentChunk();
       startNewChunk(stream);
     }, CHUNK_DURATION_MS);
-
     recordingIndicator.style.display = 'flex';
-  } catch (err) {
-    console.error('Recording failed:', err);
-    uploadStatus.textContent = 'Screen recording failed: ' + err.message;
-  }
+  }).catch(function (err) {
+    uploadStatusEl.textContent = 'Recording failed: ' + err.message;
+  });
 }
 
 function startNewChunk(stream) {
   chunkNumber++;
   recordedChunks = [];
   chunkStartTime = new Date().toISOString();
-
   try {
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp8',
-      videoBitsPerSecond: 200000,
-    });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 200000 });
   } catch (e) {
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
   }
-
   mediaRecorder.ondataavailable = function (e) {
-    if (e.data.size > 0) {
-      recordedChunks.push(e.data);
-    }
+    if (e.data.size > 0) recordedChunks.push(e.data);
   };
-
   mediaRecorder.start(5000);
-}
-
-function uploadChunkToServer(blob, chunkNum, startTime, endTime) {
-  uploadStatus.textContent = 'Uploading chunk #' + chunkNum + ' (' + (blob.size / 1024).toFixed(0) + ' KB)...';
-
-  var formData = new FormData();
-  formData.append('session_id', String(sessionId));
-  formData.append('chunk_number', String(chunkNum));
-  formData.append('start_time', startTime);
-  formData.append('end_time', endTime);
-  formData.append('chunk', blob, 'chunk_' + chunkNum + '.webm');
-
-  fetch(serverUrl + '/api/recordings/upload', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + token },
-    body: formData,
-  })
-    .then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    })
-    .then(function () {
-      uploadStatus.textContent = 'Chunk #' + chunkNum + ' uploaded';
-      setTimeout(function () {
-        if (uploadStatus.textContent === 'Chunk #' + chunkNum + ' uploaded') {
-          uploadStatus.textContent = '';
-        }
-      }, 3000);
-    })
-    .catch(function (err) {
-      uploadStatus.textContent = 'Chunk #' + chunkNum + ' failed: ' + err.message;
-    });
 }
 
 function saveCurrentChunk() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
-
-  var currentChunkNum = chunkNumber;
-  var currentStartTime = chunkStartTime;
-  var currentChunks = recordedChunks;
+  var num = chunkNumber;
+  var start = chunkStartTime;
+  var chunks = recordedChunks;
 
   mediaRecorder.onstop = function () {
-    var endTime = new Date().toISOString();
-    if (currentChunks.length === 0) return;
-    var blob = new Blob(currentChunks, { type: 'video/webm' });
+    var end = new Date().toISOString();
+    if (chunks.length === 0) return;
+    var blob = new Blob(chunks, { type: 'video/webm' });
     if (blob.size === 0) return;
-    uploadChunkToServer(blob, currentChunkNum, currentStartTime, endTime);
+    uploadChunk(blob, num, start, end);
   };
-
   mediaRecorder.requestData();
   mediaRecorder.stop();
 }
 
+function uploadChunk(blob, num, start, end) {
+  uploadStatusEl.textContent = 'Uploading chunk #' + num + ' (' + Math.round(blob.size / 1024) + ' KB)...';
+
+  // Convert to base64 and send via IPC to main process
+  var reader = new FileReader();
+  reader.onload = function () {
+    var base64 = reader.result.split(',')[1];
+    window.timedoc.apiCall('UPLOAD', '/api/recordings/upload', {
+      sessionId: sessionId,
+      chunkNumber: num,
+      startTime: start,
+      endTime: end,
+      base64Data: base64,
+    }).then(function (result) {
+      if (result.ok) {
+        uploadStatusEl.textContent = 'Chunk #' + num + ' uploaded';
+        setTimeout(function () {
+          if (uploadStatusEl.textContent === 'Chunk #' + num + ' uploaded') uploadStatusEl.textContent = '';
+        }, 3000);
+      } else {
+        uploadStatusEl.textContent = 'Chunk #' + num + ' failed: ' + (result.error || '');
+      }
+    });
+  };
+  reader.readAsDataURL(blob);
+}
+
 function stopRecording() {
-  if (chunkInterval) {
-    clearInterval(chunkInterval);
-    chunkInterval = null;
-  }
-
+  if (chunkInterval) { clearInterval(chunkInterval); chunkInterval = null; }
   saveCurrentChunk();
-
   if (mediaRecorder && mediaRecorder.stream) {
     mediaRecorder.stream.getTracks().forEach(function (t) { t.stop(); });
   }
-
   mediaRecorder = null;
   recordingIndicator.style.display = 'none';
 }
 
 // ---- Idle Detection ----
-if (window.timedoc && window.timedoc.onIdleDetected) {
+if (window.timedoc.onIdleDetected) {
   window.timedoc.onIdleDetected(function () {
     if (sessionStatus === 'active') {
-      apiCall('POST', '/api/sessions/pause', {})
-        .then(function () {
-          sessionStatus = 'paused';
-          pauseTimer();
-          updateControls();
-          timerStatus.textContent = 'Paused (idle detected)';
-          timerStatus.className = 'timer-status paused';
-        })
-        .catch(function () {});
+      api('POST', '/api/sessions/pause').then(function () {
+        sessionStatus = 'paused';
+        pauseTimer();
+        updateControls();
+        timerStatusEl.textContent = 'Paused (idle)';
+        timerStatusEl.className = 'timer-status paused';
+      }).catch(function () {});
     }
   });
 }
 
-// ---- UI Controls ----
+// ---- Controls ----
 function updateControls() {
+  startBtn.style.display = sessionStatus ? 'none' : 'block';
+  pauseBtn.style.display = sessionStatus === 'active' ? 'block' : 'none';
+  resumeBtn.style.display = sessionStatus === 'paused' ? 'block' : 'none';
+  stopBtn.style.display = sessionStatus ? 'block' : 'none';
+  workDateSelect.disabled = !!sessionStatus;
+
   if (sessionStatus === 'active') {
-    startBtn.style.display = 'none';
-    pauseBtn.style.display = 'block';
-    resumeBtn.style.display = 'none';
-    stopBtn.style.display = 'block';
-    workDateSelect.disabled = true;
-    timerStatus.textContent = 'Working';
-    timerStatus.className = 'timer-status active';
+    timerStatusEl.textContent = 'Working';
+    timerStatusEl.className = 'timer-status active';
   } else if (sessionStatus === 'paused') {
-    startBtn.style.display = 'none';
-    pauseBtn.style.display = 'none';
-    resumeBtn.style.display = 'block';
-    stopBtn.style.display = 'block';
-    workDateSelect.disabled = true;
-    if (!timerStatus.textContent.includes('idle')) {
-      timerStatus.textContent = 'On Break';
-      timerStatus.className = 'timer-status paused';
-    }
+    timerStatusEl.textContent = 'On Break';
+    timerStatusEl.className = 'timer-status paused';
   } else {
-    startBtn.style.display = 'block';
-    pauseBtn.style.display = 'none';
-    resumeBtn.style.display = 'none';
-    stopBtn.style.display = 'none';
-    workDateSelect.disabled = false;
-    timerStatus.textContent = 'Ready';
-    timerStatus.className = 'timer-status';
+    timerStatusEl.textContent = 'Ready';
+    timerStatusEl.className = 'timer-status';
   }
 }
 
-// ---- Event Handlers ----
-
-// Login
+// ---- Login ----
 loginForm.addEventListener('submit', function (e) {
   e.preventDefault();
   loginError.textContent = '';
-  loginBtn.textContent = 'Logging in...';
-  loginBtn.disabled = true;
 
   serverUrl = document.getElementById('server-url').value.replace(/\/+$/, '');
   var username = document.getElementById('username').value;
@@ -309,46 +248,38 @@ loginForm.addEventListener('submit', function (e) {
 
   if (!serverUrl || !username || !password) {
     loginError.textContent = 'All fields are required';
-    loginBtn.textContent = 'Login';
-    loginBtn.disabled = false;
     return;
   }
 
-  fetch(serverUrl + '/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: username, password: password }),
-  })
-    .then(function (res) {
-      return res.json().then(function (data) {
-        if (!res.ok) throw new Error(data.error || 'Login failed');
-        return data;
-      });
-    })
-    .then(function (data) {
-      token = data.token;
-      user = data.user;
-      localStorage.setItem('timedoc_server', serverUrl);
+  loginBtn.textContent = 'Logging in...';
+  loginBtn.disabled = true;
 
-      displayName.textContent = user.display_name;
-      populateWorkDates();
-      resetTimer();
-      sessionId = null;
-      sessionStatus = null;
-      updateControls();
-      showScreen(timerScreen);
-    })
-    .catch(function (err) {
-      loginError.textContent = err.message || 'Connection failed';
-      loginBtn.textContent = 'Login';
-      loginBtn.disabled = false;
-    });
+  // Tell main process the server URL first
+  window.timedoc.apiCall('SET_SERVER', serverUrl, {}).then(function () {
+    return api('POST', '/api/auth/login', { username: username, password: password });
+  }).then(function (data) {
+    token = data.token;
+    user = data.user;
+    localStorage.setItem('timedoc_server', serverUrl);
+    displayNameEl.textContent = user.display_name;
+    populateWorkDates();
+    resetTimer();
+    sessionId = null;
+    sessionStatus = null;
+    updateControls();
+    showScreen(timerScreen);
+  }).catch(function (err) {
+    loginError.textContent = err.message || 'Connection failed';
+  }).finally(function () {
+    loginBtn.textContent = 'Login';
+    loginBtn.disabled = false;
+  });
 });
 
-// Logout
+// ---- Logout ----
 logoutBtn.addEventListener('click', function () {
   if (sessionStatus) {
-    if (!confirm('You have an active session. Stop and logout?')) return;
+    if (!confirm('Stop session and logout?')) return;
     handleStop();
   }
   token = '';
@@ -356,33 +287,24 @@ logoutBtn.addEventListener('click', function () {
   showScreen(loginScreen);
 });
 
-// Start
+// ---- Start ----
 startBtn.addEventListener('click', function () {
   startBtn.disabled = true;
   startBtn.textContent = 'Starting...';
 
-  var workDate = workDateSelect.value;
-
-  apiCall('POST', '/api/sessions/start', { work_date: workDate })
+  api('POST', '/api/sessions/start', { work_date: workDateSelect.value })
     .then(function (data) {
       sessionId = data.session.id;
       sessionStatus = 'active';
       elapsedSeconds = 0;
       startTimer();
       updateControls();
-
-      // Notify main process for quit cleanup
-      if (window.timedoc && window.timedoc.notifySessionStarted) {
-        window.timedoc.notifySessionStarted(serverUrl, token);
-      }
-
       startRecording();
-
-      if (window.timedoc) window.timedoc.startIdleMonitoring(300);
+      window.timedoc.startIdleMonitoring(300);
 
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       heartbeatInterval = setInterval(function () {
-        apiCall('POST', '/api/sessions/heartbeat', {}).catch(function () {});
+        api('POST', '/api/sessions/heartbeat').catch(function () {});
       }, 60000);
     })
     .catch(function (err) {
@@ -394,33 +316,25 @@ startBtn.addEventListener('click', function () {
     });
 });
 
-// Pause
+// ---- Pause ----
 pauseBtn.addEventListener('click', function () {
-  apiCall('POST', '/api/sessions/pause', {})
-    .then(function () {
-      sessionStatus = 'paused';
-      pauseTimer();
-      updateControls();
-    })
-    .catch(function (err) {
-      alert('Failed to pause: ' + err.message);
-    });
+  api('POST', '/api/sessions/pause').then(function () {
+    sessionStatus = 'paused';
+    pauseTimer();
+    updateControls();
+  }).catch(function (err) { alert('Pause failed: ' + err.message); });
 });
 
-// Resume
+// ---- Resume ----
 resumeBtn.addEventListener('click', function () {
-  apiCall('POST', '/api/sessions/resume', {})
-    .then(function () {
-      sessionStatus = 'active';
-      startTimer();
-      updateControls();
-    })
-    .catch(function (err) {
-      alert('Failed to resume: ' + err.message);
-    });
+  api('POST', '/api/sessions/resume').then(function () {
+    sessionStatus = 'active';
+    startTimer();
+    updateControls();
+  }).catch(function (err) { alert('Resume failed: ' + err.message); });
 });
 
-// Stop
+// ---- Stop ----
 stopBtn.addEventListener('click', function () {
   if (!confirm('Stop this session?')) return;
   handleStop();
@@ -428,29 +342,19 @@ stopBtn.addEventListener('click', function () {
 
 function handleStop() {
   stopRecording();
-  if (window.timedoc) window.timedoc.stopIdleMonitoring();
+  window.timedoc.stopIdleMonitoring();
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
 
-  apiCall('POST', '/api/sessions/stop', {})
-    .then(function () {
-      sessionStatus = null;
-      sessionId = null;
-      pauseTimer();
-      updateControls();
-      uploadStatus.textContent = 'Session completed';
-      setTimeout(function () { uploadStatus.textContent = ''; }, 3000);
-
-      if (window.timedoc && window.timedoc.notifySessionStopped) {
-        window.timedoc.notifySessionStopped();
-      }
-    })
-    .catch(function (err) {
-      alert('Failed to stop: ' + err.message);
-    });
+  api('POST', '/api/sessions/stop').then(function () {
+    sessionStatus = null;
+    sessionId = null;
+    pauseTimer();
+    updateControls();
+    uploadStatusEl.textContent = 'Session completed';
+    setTimeout(function () { uploadStatusEl.textContent = ''; }, 3000);
+  }).catch(function (err) { alert('Stop failed: ' + err.message); });
 }
 
 // ---- Init ----
-var savedServer = localStorage.getItem('timedoc_server');
-if (savedServer) {
-  document.getElementById('server-url').value = savedServer;
-}
+var saved = localStorage.getItem('timedoc_server');
+if (saved) document.getElementById('server-url').value = saved;
