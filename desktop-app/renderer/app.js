@@ -8,6 +8,7 @@ let sessionStatus = null; // 'active', 'paused', null
 // Timer
 let timerInterval = null;
 let elapsedSeconds = 0;
+let heartbeatInterval = null;
 
 // Recording
 let mediaRecorder = null;
@@ -334,6 +335,12 @@ startBtn.addEventListener('click', async () => {
 
     // Start idle monitoring (5 min threshold)
     window.timedoc.startIdleMonitoring(300);
+
+    // Start heartbeat - update duration on server every 60 seconds
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(() => {
+      window.timedoc.sendHeartbeat(serverUrl, token).catch(() => {});
+    }, 60000);
   } catch (err) {
     alert('Failed to start: ' + err.message);
   } finally {
@@ -376,6 +383,7 @@ async function handleStop() {
   try {
     stopRecording();
     window.timedoc.stopIdleMonitoring();
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
     await window.timedoc.stopSession(serverUrl, token);
     sessionStatus = null;
     sessionId = null;

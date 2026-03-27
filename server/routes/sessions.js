@@ -107,6 +107,28 @@ router.post('/resume', (req, res) => {
   res.json({ session: updated });
 });
 
+// POST /api/sessions/heartbeat - updates duration_minutes in real-time
+router.post('/heartbeat', (req, res) => {
+  const userId = req.user.id;
+
+  const session = db.prepare(
+    "SELECT * FROM sessions WHERE user_id = ? AND status IN ('active', 'paused')"
+  ).get(userId);
+
+  if (!session) {
+    return res.status(400).json({ error: 'No active session' });
+  }
+
+  const now = new Date();
+  const startTime = new Date(session.start_time.replace(' ', 'T') + 'Z');
+  const elapsedMs = now - startTime;
+  const totalMinutes = Math.max(0, Math.round(elapsedMs / 60000) - session.break_minutes);
+
+  db.prepare('UPDATE sessions SET duration_minutes = ? WHERE id = ?').run(totalMinutes, session.id);
+
+  res.json({ duration_minutes: totalMinutes });
+});
+
 // GET /api/sessions/active
 router.get('/active', (req, res) => {
   const session = db.prepare(

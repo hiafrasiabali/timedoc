@@ -91,6 +91,11 @@ ipcMain.handle('session:start', async (event, { serverUrl, token, workDate }) =>
   return startSession(serverUrl, token, workDate);
 });
 
+ipcMain.handle('session:heartbeat', async (event, { serverUrl, token }) => {
+  const { heartbeat } = require('./src/auth');
+  return heartbeat(serverUrl, token);
+});
+
 ipcMain.handle('session:stop', async (event, { serverUrl, token }) => {
   const { stopSession } = require('./src/auth');
   return stopSession(serverUrl, token);

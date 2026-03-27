@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('timedoc', {
   resumeSession: (serverUrl, token) =>
     ipcRenderer.invoke('session:resume', { serverUrl, token }),
 
+  // Heartbeat
+  sendHeartbeat: (serverUrl, token) =>
+    ipcRenderer.invoke('session:heartbeat', { serverUrl, token }),
+
   // Recording
   sendChunk: (data) => ipcRenderer.send('recording:chunk-ready', data),
   onChunkUploaded: (callback) =>

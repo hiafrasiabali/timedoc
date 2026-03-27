@@ -63,6 +63,10 @@ async function stopSession(serverUrl, token) {
   return apiRequest(serverUrl, 'POST', '/api/sessions/stop', token, {});
 }
 
+async function heartbeat(serverUrl, token) {
+  return apiRequest(serverUrl, 'POST', '/api/sessions/heartbeat', token, {});
+}
+
 async function pauseSession(serverUrl, token) {
   return apiRequest(serverUrl, 'POST', '/api/sessions/pause', token, {});
 }
@@ -71,4 +75,4 @@ async function resumeSession(serverUrl, token) {
   return apiRequest(serverUrl, 'POST', '/api/sessions/resume', token, {});
 }
 
-module.exports = { login, startSession, stopSession, pauseSession, resumeSession };
+module.exports = { login, startSession, stopSession, pauseSession, resumeSession, heartbeat };
