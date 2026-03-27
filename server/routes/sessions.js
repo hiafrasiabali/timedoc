@@ -124,8 +124,9 @@ router.post('/heartbeat', (req, res) => {
   const elapsedMs = now - startTime;
   const totalMinutes = Math.max(0, Math.round(elapsedMs / 60000) - session.break_minutes);
 
-  const nowIso = now.toISOString();
-  db.prepare('UPDATE sessions SET duration_minutes = ?, last_heartbeat = ? WHERE id = ?').run(totalMinutes, nowIso, session.id);
+  // Use SQLite datetime format (no T, no Z) for consistent comparison
+  const nowSqlite = now.toISOString().replace('T', ' ').replace('Z', '').slice(0, 19);
+  db.prepare('UPDATE sessions SET duration_minutes = ?, last_heartbeat = ? WHERE id = ?').run(totalMinutes, nowSqlite, session.id);
 
   res.json({ duration_minutes: totalMinutes });
 });

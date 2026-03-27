@@ -55,7 +55,14 @@ try {
 // Auto-complete stale sessions
 function cleanupStaleSessions() {
   const now = new Date();
-  const fiveMinAgo = new Date(now - 5 * 60 * 1000).toISOString();
+
+  // Use SQLite datetime format (space, no T, no Z) for correct comparison
+  function toSqlite(date) {
+    return date.toISOString().replace('T', ' ').replace('Z', '').slice(0, 19);
+  }
+
+  const fiveMinAgo = toSqlite(new Date(now - 5 * 60 * 1000));
+  const tenMinAgo = toSqlite(new Date(now - 10 * 60 * 1000));
 
   // Sessions with heartbeat that stopped beating
   const staleWithHeartbeat = db.prepare(
@@ -63,7 +70,6 @@ function cleanupStaleSessions() {
   ).all(fiveMinAgo);
 
   // Sessions with NO heartbeat that started more than 10 min ago (old app versions)
-  const tenMinAgo = new Date(now - 10 * 60 * 1000).toISOString();
   const staleNoHeartbeat = db.prepare(
     "SELECT * FROM sessions WHERE status IN ('active', 'paused') AND last_heartbeat IS NULL AND start_time < ?"
   ).all(tenMinAgo);

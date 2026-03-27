@@ -1,8 +1,7 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, desktopCapturer, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, desktopCapturer } = require('electron');
 const path = require('path');
 const http = require('http');
 const https = require('https');
-const { autoUpdater } = require('electron-updater');
 
 let mainWindow = null;
 let tray = null;
@@ -101,40 +100,6 @@ function createTray() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
-
-  // Auto-updater
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on('update-available', (info) => {
-    if (mainWindow) {
-      mainWindow.webContents.executeJavaScript(
-        'document.getElementById("upload-status") && (document.getElementById("upload-status").textContent = "Downloading update v' + info.version + '...")'
-      );
-    }
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'TimeDOC v' + info.version + ' has been downloaded. Restart to apply the update.',
-      buttons: ['Restart Now', 'Later'],
-    }).then((result) => {
-      if (result.response === 0) {
-        app.isQuitting = true;
-        autoUpdater.quitAndInstall();
-      }
-    });
-  });
-
-  autoUpdater.on('error', (err) => {
-    console.log('Auto-update error:', err.message);
-  });
-
-  // Check for updates after 5 seconds, then every 30 minutes
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 30 * 60 * 1000);
 });
 
 app.on('before-quit', async (e) => {
