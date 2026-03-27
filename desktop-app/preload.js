@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, shell } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('timedoc', {
   apiCall: (method, path, body) =>
@@ -12,5 +12,5 @@ contextBridge.exposeInMainWorld('timedoc', {
   onIdleDetected: (callback) =>
     ipcRenderer.on('idle:detected', (event, data) => callback(data)),
 
-  openExternal: (url) => shell.openExternal(url),
+  openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
 });

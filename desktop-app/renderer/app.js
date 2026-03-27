@@ -1,4 +1,4 @@
-var APP_VERSION = '1.5.1';
+var APP_VERSION = '1.5.2';
 
 // ---- State ----
 var serverUrl = '';

@@ -175,6 +175,12 @@ ipcMain.on('idle:stop-monitoring', () => {
   if (idleCheckInterval) { clearInterval(idleCheckInterval); idleCheckInterval = null; }
 });
 
+// Open URL in default browser
+ipcMain.handle('app:open-external', (event, url) => {
+  const { shell } = require('electron');
+  shell.openExternal(url);
+});
+
 // ---- Upload via multipart (for recordings) ----
 function uploadChunkViaNode({ sessionId, chunkNumber, startTime, endTime, base64Data }) {
   return new Promise((resolve) => {
