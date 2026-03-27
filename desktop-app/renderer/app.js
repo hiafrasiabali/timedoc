@@ -1,4 +1,4 @@
-var APP_VERSION = '1.4.2';
+var APP_VERSION = '1.5.0';
 
 // ---- State ----
 var serverUrl = '';
@@ -27,6 +27,8 @@ var loginForm = document.getElementById('login-form');
 var loginError = document.getElementById('login-error');
 var loginBtn = document.getElementById('login-btn');
 var displayNameEl = document.getElementById('display-name');
+var userAvatar = document.getElementById('user-avatar');
+var dashboardLink = document.getElementById('dashboard-link');
 var logoutBtn = document.getElementById('logout-btn');
 var timerDisplay = document.getElementById('timer-display');
 var timerStatusEl = document.getElementById('timer-status');
@@ -41,40 +43,10 @@ var versionDisplay = document.getElementById('version-display');
 
 if (versionDisplay) versionDisplay.textContent = 'v' + APP_VERSION;
 
-// ---- Debug Log ----
-var debugLog = document.getElementById('debug-log');
-var toggleDebug = document.getElementById('toggle-debug');
-if (toggleDebug) {
-  toggleDebug.addEventListener('click', function () {
-    if (debugLog.style.display === 'none') {
-      debugLog.style.display = 'block';
-      toggleDebug.textContent = 'Hide Debug';
-    } else {
-      debugLog.style.display = 'none';
-      toggleDebug.textContent = 'Show Debug';
-    }
-  });
-}
-
-function log(msg) {
-  var time = new Date().toLocaleTimeString();
-  var line = document.createElement('div');
-  line.textContent = time + ' ' + msg;
-  if (debugLog) {
-    debugLog.appendChild(line);
-    debugLog.scrollTop = debugLog.scrollHeight;
-  }
-}
-
-// ---- API helper (goes through main process Node.js http) ----
+// ---- API helper ----
 function api(method, path, body) {
-  log('>> ' + method + ' ' + path);
   return window.timedoc.apiCall(method, path, body || {}).then(function (result) {
-    if (!result.ok) {
-      log('<< ERROR: ' + (result.error || result.status));
-      throw new Error(result.error || 'Request failed');
-    }
-    log('<< OK');
+    if (!result.ok) throw new Error(result.error || 'Request failed');
     return result.data;
   });
 }
@@ -290,6 +262,11 @@ loginForm.addEventListener('submit', function (e) {
     user = data.user;
     localStorage.setItem('timedoc_server', serverUrl);
     displayNameEl.textContent = user.display_name;
+    if (userAvatar) userAvatar.textContent = user.display_name.charAt(0).toUpperCase();
+    if (dashboardLink) dashboardLink.onclick = function (e) {
+      e.preventDefault();
+      window.timedoc.openExternal(serverUrl);
+    };
     populateWorkDates();
     resetTimer();
     sessionId = null;
