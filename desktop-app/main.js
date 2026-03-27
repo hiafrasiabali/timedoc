@@ -5,7 +5,7 @@ const https = require('https');
 
 let mainWindow = null;
 let tray = null;
-let activeSessionInfo = null;
+// Session cleanup handled server-side via stale heartbeat detection
 
 // ---- Generic API call via Node http ----
 function nodeApiCall(serverUrl, method, apiPath, token, body) {
@@ -102,15 +102,8 @@ app.whenReady().then(() => {
   createTray();
 });
 
-app.on('before-quit', async (e) => {
+app.on('before-quit', () => {
   app.isQuitting = true;
-  if (activeSessionInfo) {
-    e.preventDefault();
-    const { serverUrl, token } = activeSessionInfo;
-    activeSessionInfo = null;
-    await nodeApiCall(serverUrl, 'POST', '/api/sessions/stop', token, {});
-    app.quit();
-  }
 });
 
 app.on('window-all-closed', () => {
@@ -145,21 +138,15 @@ ipcMain.handle('api:call', async (event, { method, path: apiPath, body }) => {
     console.log('[IPC] Token stored for user:', result.data.user.display_name);
   }
   if (result.ok && apiPath === '/api/sessions/start') {
-    activeSessionInfo = { serverUrl: storedServerUrl, token: storedToken };
-    console.log('[IPC] Session started, tracking for quit cleanup');
+    console.log('[IPC] Session started');
   }
   if (result.ok && apiPath === '/api/sessions/stop') {
-    activeSessionInfo = null;
-    console.log('[IPC] Session stopped, cleared quit cleanup');
+    console.log('[IPC] Session stopped');
   }
 
   return result;
 });
 
-// Log before-quit
-app.on('will-quit', () => {
-  console.log('[APP] will-quit, activeSession:', !!activeSessionInfo);
-});
 
 // ---- Desktop capturer ----
 ipcMain.handle('app:get-screen-sources', async () => {
