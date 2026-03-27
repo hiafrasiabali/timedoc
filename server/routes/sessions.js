@@ -25,7 +25,7 @@ router.post('/start', (req, res) => {
   const date = work_date || new Date().toISOString().slice(0, 10);
 
   const result = db.prepare(
-    'INSERT INTO sessions (user_id, work_date) VALUES (?, ?)'
+    'INSERT INTO sessions (user_id, work_date, last_heartbeat) VALUES (?, ?, datetime(\'now\'))'
   ).run(userId, date);
 
   const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(result.lastInsertRowid);
@@ -124,7 +124,8 @@ router.post('/heartbeat', (req, res) => {
   const elapsedMs = now - startTime;
   const totalMinutes = Math.max(0, Math.round(elapsedMs / 60000) - session.break_minutes);
 
-  db.prepare('UPDATE sessions SET duration_minutes = ? WHERE id = ?').run(totalMinutes, session.id);
+  const nowIso = now.toISOString();
+  db.prepare('UPDATE sessions SET duration_minutes = ?, last_heartbeat = ? WHERE id = ?').run(totalMinutes, nowIso, session.id);
 
   res.json({ duration_minutes: totalMinutes });
 });

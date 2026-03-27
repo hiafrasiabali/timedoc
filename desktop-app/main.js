@@ -4,6 +4,9 @@ const path = require('path');
 let mainWindow = null;
 let tray = null;
 
+// Track active session for cleanup on quit
+let activeSessionInfo = null; // { serverUrl, token }
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 380,
@@ -69,8 +72,21 @@ app.whenReady().then(() => {
   createTray();
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async (e) => {
   app.isQuitting = true;
+
+  // Auto-stop active session when app is closing
+  if (activeSessionInfo) {
+    e.preventDefault();
+    try {
+      const { stopSession } = require('./src/auth');
+      await stopSession(activeSessionInfo.serverUrl, activeSessionInfo.token);
+    } catch (err) {
+      console.error('Failed to stop session on quit:', err.message);
+    }
+    activeSessionInfo = null;
+    app.quit();
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -88,7 +104,9 @@ ipcMain.handle('auth:login', async (event, { serverUrl, username, password }) =>
 // Session control
 ipcMain.handle('session:start', async (event, { serverUrl, token, workDate }) => {
   const { startSession } = require('./src/auth');
-  return startSession(serverUrl, token, workDate);
+  const result = await startSession(serverUrl, token, workDate);
+  activeSessionInfo = { serverUrl, token };
+  return result;
 });
 
 ipcMain.handle('session:heartbeat', async (event, { serverUrl, token }) => {
@@ -98,7 +116,9 @@ ipcMain.handle('session:heartbeat', async (event, { serverUrl, token }) => {
 
 ipcMain.handle('session:stop', async (event, { serverUrl, token }) => {
   const { stopSession } = require('./src/auth');
-  return stopSession(serverUrl, token);
+  const result = await stopSession(serverUrl, token);
+  activeSessionInfo = null;
+  return result;
 });
 
 ipcMain.handle('session:pause', async (event, { serverUrl, token }) => {

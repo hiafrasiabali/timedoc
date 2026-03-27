@@ -45,6 +45,38 @@ db.exec(`
   );
 `);
 
+// Add last_heartbeat column if missing (migration)
+try {
+  db.exec('ALTER TABLE sessions ADD COLUMN last_heartbeat DATETIME');
+} catch {
+  // Column already exists
+}
+
+// Auto-complete stale sessions (no heartbeat for 5+ minutes)
+function cleanupStaleSessions() {
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const stale = db.prepare(
+    "SELECT * FROM sessions WHERE status IN ('active', 'paused') AND last_heartbeat IS NOT NULL AND last_heartbeat < ?"
+  ).all(fiveMinAgo);
+
+  for (const session of stale) {
+    const startTime = new Date(session.start_time.replace(' ', 'T') + 'Z');
+    const lastBeat = new Date(session.last_heartbeat);
+    const totalMinutes = Math.max(0, Math.round((lastBeat - startTime) / 60000) - session.break_minutes);
+
+    db.prepare(
+      'UPDATE sessions SET status = ?, end_time = ?, duration_minutes = ? WHERE id = ?'
+    ).run('completed', session.last_heartbeat, totalMinutes, session.id);
+
+    console.log(`Auto-completed stale session ${session.id} (user ${session.user_id})`);
+  }
+}
+
+// Run cleanup every 2 minutes
+setInterval(cleanupStaleSessions, 2 * 60 * 1000);
+// Also run on startup
+cleanupStaleSessions();
+
 // Seed admin account if it doesn't exist
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
 if (!adminExists) {

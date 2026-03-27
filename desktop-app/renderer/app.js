@@ -321,8 +321,18 @@ loginForm.addEventListener('submit', async (e) => {
   const username = document.getElementById('username').value;
   const password = document.getElementById('password').value;
 
+  if (!serverUrl || !username || !password) {
+    loginError.textContent = 'All fields are required';
+    loginBtn.textContent = 'Login';
+    loginBtn.disabled = false;
+    return;
+  }
+
   try {
     const result = await window.timedoc.login(serverUrl, username, password);
+    if (!result || !result.token) {
+      throw new Error('Invalid response from server');
+    }
     token = result.token;
     user = result.user;
 
@@ -337,8 +347,7 @@ loginForm.addEventListener('submit', async (e) => {
     updateControls();
     showScreen(timerScreen);
   } catch (err) {
-    loginError.textContent = err.message;
-  } finally {
+    loginError.textContent = err.message || 'Connection failed. Check server URL.';
     loginBtn.textContent = 'Login';
     loginBtn.disabled = false;
   }
