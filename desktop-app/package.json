@@ -1,0 +1,35 @@
+{
+  "name": "timedoc",
+  "version": "1.0.0",
+  "description": "TimeDOC - Employee Time Tracking & Screen Recording",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir"
+  },
+  "author": "TimeDOC",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.timedoc.app",
+    "productName": "TimeDOC",
+    "win": {
+      "target": "nsis",
+      "icon": "renderer/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*"
+    ]
+  }
+}

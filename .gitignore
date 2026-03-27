@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+*.db
+uploads/
+!uploads/.gitkeep
+.pm2/
+*.log
+*.db-shm
+*.db-wal

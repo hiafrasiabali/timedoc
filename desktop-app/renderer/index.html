@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TimeDOC</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen active">
+    <div class="logo">TimeDOC</div>
+    <div class="subtitle">Time Tracking & Screen Recording</div>
+    <form id="login-form">
+      <div class="form-group">
+        <label>Server URL</label>
+        <input type="text" id="server-url" value="http://109.205.181.13" placeholder="http://your-server-ip">
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="username" placeholder="Enter username" autofocus>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Enter password">
+      </div>
+      <button type="submit" class="btn btn-primary" id="login-btn">Login</button>
+      <div id="login-error" class="error"></div>
+    </form>
+  </div>
+
+  <!-- Timer Screen -->
+  <div id="timer-screen" class="screen">
+    <div class="header">
+      <span class="user-name" id="display-name"></span>
+      <button class="btn-link" id="logout-btn">Logout</button>
+    </div>
+
+    <div class="timer-display" id="timer-display">00:00:00</div>
+    <div class="timer-status" id="timer-status">Ready</div>
+
+    <div class="form-group">
+      <label>Work Date</label>
+      <select id="work-date"></select>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-start" id="start-btn">Start</button>
+      <button class="btn btn-pause" id="pause-btn" style="display:none">Pause</button>
+      <button class="btn btn-resume" id="resume-btn" style="display:none">Resume</button>
+      <button class="btn btn-stop" id="stop-btn" style="display:none">Stop</button>
+    </div>
+
+    <div class="upload-status" id="upload-status"></div>
+    <div class="recording-indicator" id="recording-indicator" style="display:none">
+      <span class="rec-dot"></span> Recording
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
