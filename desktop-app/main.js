@@ -220,4 +220,4 @@ function uploadChunkViaNode({ sessionId, chunkNumber, startTime, endTime, base64
     req.write(bodyBuffer);
     req.end();
   });
-});
+}
