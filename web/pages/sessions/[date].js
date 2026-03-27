@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import VideoPlayer from '../../components/VideoPlayer';
 import { getMySessions, getSession, getToken } from '../../lib/api';
-import { formatMinutes, formatTime } from '../../components/SessionTable';
+import { formatMinutes, formatTime, todayPKT, yesterdayPKT } from '../../components/SessionTable';
 
 export default function SessionDatePage() {
   const router = useRouter();
@@ -43,14 +43,15 @@ export default function SessionDatePage() {
     }
   };
 
-  // Group chunks by hour
+  // Group chunks by hour in PKT
+  const TZ = 'Asia/Karachi';
   const groupedByHour = {};
   allChunks.forEach((c) => {
     const d = new Date(c.start_time);
-    const hour = d.getHours();
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const h12 = hour % 12 || 12;
-    const key = `${h12} ${ampm}`;
+    const parts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true, timeZone: TZ }).formatToParts(d);
+    const hourVal = parts.find(p => p.type === 'hour').value;
+    const ampm = parts.find(p => p.type === 'dayPeriod').value;
+    const key = `${hourVal} ${ampm}`;
     if (!groupedByHour[key]) groupedByHour[key] = [];
     groupedByHour[key].push(c);
   });
@@ -89,7 +90,7 @@ export default function SessionDatePage() {
               <div className="screenshot-grid">
                 {chunks.map((c) => {
                   const time = new Date(c.start_time);
-                  const timeStr = time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                  const timeStr = time.toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
                   return (
                     <div
                       key={c.id}

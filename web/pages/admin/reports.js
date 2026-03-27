@@ -10,13 +10,19 @@ export default function Reports() {
   const [loading, setLoading] = useState(false);
   const [expandedEmployee, setExpandedEmployee] = useState(null);
 
-  function utcToday() { return new Date().toISOString().slice(0, 10); }
-  function utcYesterday() { const d = new Date(); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); }
-  function weekStartStr() { const t = new Date(); const dow = t.getUTCDay(); t.setUTCDate(t.getUTCDate() - (dow === 0 ? 6 : dow - 1)); return t.toISOString().slice(0, 10); }
+  function pktToday() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }); }
+  function pktYesterday() { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }); }
+  function weekStartStr() {
+    const now = new Date();
+    const today = new Date(now.toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }));
+    const dow = today.getDay();
+    today.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+    return today.toISOString().slice(0, 10);
+  }
 
   useEffect(() => {
-    setFrom(utcToday());
-    setTo(utcToday());
+    setFrom(pktToday());
+    setTo(pktToday());
   }, []);
 
   useEffect(() => {
@@ -62,9 +68,9 @@ export default function Reports() {
       </div>
 
       <div className="date-nav">
-        <a href="#" className={from === utcToday() && to === utcToday() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(utcToday()); setTo(utcToday()); }}>Today</a>
-        <a href="#" className={from === utcYesterday() && to === utcYesterday() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(utcYesterday()); setTo(utcYesterday()); }}>Yesterday</a>
-        <a href="#" className={from === weekStartStr() && to === utcToday() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(weekStartStr()); setTo(utcToday()); }}>This Week</a>
+        <a href="#" className={from === pktToday() && to === pktToday() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(pktToday()); setTo(pktToday()); }}>Today</a>
+        <a href="#" className={from === pktYesterday() && to === pktYesterday() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(pktYesterday()); setTo(pktYesterday()); }}>Yesterday</a>
+        <a href="#" className={from === weekStartStr() && to === pktToday() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(weekStartStr()); setTo(pktToday()); }}>This Week</a>
         <span style={{ color: 'var(--border)' }}>|</span>
         <label>From:</label>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />

@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Layout from '../../../components/Layout';
 import VideoPlayer from '../../../components/VideoPlayer';
 import { getEmployeeSessions, getSession, getToken } from '../../../lib/api';
-import { formatMinutes } from '../../../components/SessionTable';
+import { formatMinutes, todayPKT, yesterdayPKT } from '../../../components/SessionTable';
 
 export default function EmployeeDetail() {
   const router = useRouter();
@@ -18,22 +18,11 @@ export default function EmployeeDetail() {
   const [loading, setLoading] = useState(true);
   const [chunksLoading, setChunksLoading] = useState(false);
 
-  // Use UTC dates to match server
-  function utcToday() { return new Date().toISOString().slice(0, 10); }
-  function utcYesterday() { const d = new Date(); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); }
-
   useEffect(() => {
     if (!id) return;
-    // Load last 7 days so we have data to detect most recent date
-    const to = utcToday();
-    const fr = new Date(); fr.setUTCDate(fr.getUTCDate() - 7);
-    setFrom(fr.toISOString().slice(0, 10));
-    setTo(to);
+    setFrom(todayPKT());
+    setTo(todayPKT());
   }, [id]);
-
-  // Detect most recent date with data and the one before it
-  const latestDate = dailyData.length > 0 ? dailyData[0].date : utcToday();
-  const secondDate = dailyData.length > 1 ? dailyData[1].date : utcYesterday();
 
   useEffect(() => {
     if (from && to && id) loadSessions();
@@ -97,14 +86,15 @@ export default function EmployeeDetail() {
     loadChunksForDate(date, dayData.sessions);
   };
 
-  // Group chunks by hour
+  // Group chunks by hour in PKT
+  const TZ = 'Asia/Karachi';
   const groupedByHour = {};
   allChunks.forEach((c) => {
     const d = new Date(c.start_time);
-    const hour = d.getHours();
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const h12 = hour % 12 || 12;
-    const key = `${h12} ${ampm}`;
+    const parts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true, timeZone: TZ }).formatToParts(d);
+    const hourVal = parts.find(p => p.type === 'hour').value;
+    const ampm = parts.find(p => p.type === 'dayPeriod').value;
+    const key = `${hourVal} ${ampm}`;
     if (!groupedByHour[key]) groupedByHour[key] = [];
     groupedByHour[key].push(c);
   });
@@ -122,8 +112,8 @@ export default function EmployeeDetail() {
       </div>
 
       <div className="date-nav">
-        <a href="#" className={from === latestDate && to === latestDate ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(latestDate); setTo(latestDate); }}>Today ({latestDate})</a>
-        <a href="#" className={from === secondDate && to === secondDate ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(secondDate); setTo(secondDate); }}>Yesterday ({secondDate})</a>
+        <a href="#" className={from === todayPKT() && to === todayPKT() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(todayPKT()); setTo(todayPKT()); }}>Today</a>
+        <a href="#" className={from === yesterdayPKT() && to === yesterdayPKT() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(yesterdayPKT()); setTo(yesterdayPKT()); }}>Yesterday</a>
         <span style={{ color: 'var(--border)' }}>|</span>
         <label>From:</label>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -183,7 +173,7 @@ export default function EmployeeDetail() {
                   <div className="screenshot-grid">
                     {chunks.map((c) => {
                       const time = new Date(c.start_time);
-                      const timeStr = time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                      const timeStr = time.toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
                       return (
                         <div
                           key={c.id}

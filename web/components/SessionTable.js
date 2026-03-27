@@ -5,10 +5,28 @@ export function formatMinutes(mins) {
   return `${h}h ${m}m`;
 }
 
+const TZ = 'Asia/Karachi';
+
 export function formatTime(datetime) {
   if (!datetime) return '-';
-  const d = new Date(datetime.includes('T') ? datetime : datetime + 'Z');
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const d = new Date(datetime.includes('T') ? datetime : datetime.replace(' ', 'T') + 'Z');
+  return d.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
+}
+
+export function formatDatePKT(datetime) {
+  if (!datetime) return '-';
+  const d = new Date(datetime.includes('T') ? datetime : datetime.replace(' ', 'T') + 'Z');
+  return d.toLocaleDateString('en-CA', { timeZone: TZ }); // YYYY-MM-DD
+}
+
+export function todayPKT() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+}
+
+export function yesterdayPKT() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('en-CA', { timeZone: TZ });
 }
 
 export default function SessionTable({ sessions, onViewSession }) {
