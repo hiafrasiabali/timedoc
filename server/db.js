@@ -52,23 +52,35 @@ try {
   // Column already exists
 }
 
-// Auto-complete stale sessions (no heartbeat for 5+ minutes)
+// Auto-complete stale sessions
 function cleanupStaleSessions() {
-  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const stale = db.prepare(
+  const now = new Date();
+  const fiveMinAgo = new Date(now - 5 * 60 * 1000).toISOString();
+
+  // Sessions with heartbeat that stopped beating
+  const staleWithHeartbeat = db.prepare(
     "SELECT * FROM sessions WHERE status IN ('active', 'paused') AND last_heartbeat IS NOT NULL AND last_heartbeat < ?"
   ).all(fiveMinAgo);
 
-  for (const session of stale) {
+  // Sessions with NO heartbeat that started more than 10 min ago (old app versions)
+  const tenMinAgo = new Date(now - 10 * 60 * 1000).toISOString();
+  const staleNoHeartbeat = db.prepare(
+    "SELECT * FROM sessions WHERE status IN ('active', 'paused') AND last_heartbeat IS NULL AND start_time < ?"
+  ).all(tenMinAgo);
+
+  const allStale = [...staleWithHeartbeat, ...staleNoHeartbeat];
+
+  for (const session of allStale) {
     const startTime = new Date(session.start_time.replace(' ', 'T') + 'Z');
-    const lastBeat = new Date(session.last_heartbeat);
-    const totalMinutes = Math.max(0, Math.round((lastBeat - startTime) / 60000) - session.break_minutes);
+    const endRef = session.last_heartbeat ? new Date(session.last_heartbeat) : now;
+    const totalMinutes = Math.max(0, Math.round((endRef - startTime) / 60000) - session.break_minutes);
+    const endTime = session.last_heartbeat || now.toISOString();
 
     db.prepare(
       'UPDATE sessions SET status = ?, end_time = ?, duration_minutes = ? WHERE id = ?'
-    ).run('completed', session.last_heartbeat, totalMinutes, session.id);
+    ).run('completed', endTime, totalMinutes, session.id);
 
-    console.log(`Auto-completed stale session ${session.id} (user ${session.user_id})`);
+    console.log(`Auto-completed stale session ${session.id} (user ${session.user_id}, ${totalMinutes}min)`);
   }
 }
 
