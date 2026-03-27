@@ -1,7 +1,4 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 
 contextBridge.exposeInMainWorld('timedoc', {
   apiCall: (method, path, body) =>
@@ -17,14 +14,12 @@ contextBridge.exposeInMainWorld('timedoc', {
 
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
 
-  // Save chunk to temp file and trigger upload (avoids IPC data corruption)
-  saveAndUploadChunk: (arrayBuffer, sessionId, chunkNumber, startTime, endTime) => {
-    const tmpDir = path.join(os.tmpdir(), 'timedoc-chunks');
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-    const tmpFile = path.join(tmpDir, 'chunk_' + sessionId + '_' + chunkNumber + '.webm');
-    fs.writeFileSync(tmpFile, Buffer.from(arrayBuffer));
-    return ipcRenderer.invoke('api:upload-file', { sessionId, chunkNumber, startTime, endTime, filePath: tmpFile });
-  },
+  // Upload chunk: send ArrayBuffer to main process which writes to file and uploads
+  uploadChunk: (arrayBuffer, sessionId, chunkNumber, startTime, endTime) =>
+    ipcRenderer.invoke('api:upload-file', {
+      sessionId, chunkNumber, startTime, endTime,
+      data: Buffer.from(arrayBuffer),
+    }),
 
   // Auto-updater
   onUpdateStatus: (callback) =>

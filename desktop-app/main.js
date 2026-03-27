@@ -226,22 +226,16 @@ ipcMain.on('idle:stop-monitoring', () => {
   if (idleCheckInterval) { clearInterval(idleCheckInterval); idleCheckInterval = null; }
 });
 
-// Upload chunk from temp file (no IPC data serialization)
-ipcMain.handle('api:upload-file', async (event, { sessionId, chunkNumber, startTime, endTime, filePath }) => {
-  const fs = require('fs');
-  if (!fs.existsSync(filePath)) return { ok: false, error: 'Temp file missing' };
+// Upload chunk - receives Buffer via IPC structured clone
+ipcMain.handle('api:upload-file', async (event, { sessionId, chunkNumber, startTime, endTime, data }) => {
+  // data arrives as Buffer from preload's Buffer.from(arrayBuffer)
+  const fileBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  console.log('[UPLOAD] Chunk ' + chunkNumber + ' for session ' + sessionId + ' (' + fileBuffer.length + ' bytes)');
 
-  const fileBuffer = fs.readFileSync(filePath);
-  console.log('[UPLOAD] Chunk ' + chunkNumber + ' for session ' + sessionId + ' (' + fileBuffer.length + ' bytes from file)');
-
-  const result = await uploadChunkViaNode({
+  return uploadChunkViaNode({
     sessionId, chunkNumber, startTime, endTime,
     fileBuffer: fileBuffer,
   });
-
-  // Clean up temp file
-  try { fs.unlinkSync(filePath); } catch {}
-  return result;
 });
 
 // Manual update check

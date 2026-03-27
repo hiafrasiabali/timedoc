@@ -1,4 +1,4 @@
-var APP_VERSION = '1.7.1';
+var APP_VERSION = '1.7.2';
 
 // ---- State ----
 var serverUrl = '';
@@ -168,9 +168,8 @@ function saveCurrentChunk() {
 function uploadChunk(blob, num, start, end) {
   uploadStatusEl.textContent = 'Uploading chunk #' + num + ' (' + Math.round(blob.size / 1024) + ' KB)...';
 
-  // Write to temp file via preload (bypasses IPC serialization completely)
   blob.arrayBuffer().then(function (buffer) {
-    return window.timedoc.saveAndUploadChunk(buffer, sessionId, num, start, end);
+    return window.timedoc.uploadChunk(buffer, sessionId, num, start, end);
   }).then(function (result) {
     if (result.ok) {
       uploadStatusEl.textContent = 'Chunk #' + num + ' uploaded';
