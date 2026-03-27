@@ -15,44 +15,38 @@ export default function Dashboard() {
     loadData();
   }, []);
 
+  const pktDate = (d) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+
   const loadData = async () => {
     try {
-      // Get last 30 days of sessions
-      const today = new Date();
-      const from = new Date(today);
+      const now = new Date();
+      const todayStr = pktDate(now);
+      const from = new Date(now);
       from.setDate(from.getDate() - 30);
 
-      const fromStr = from.toISOString().slice(0, 10);
-      const toStr = today.toISOString().slice(0, 10);
-
-      const data = await getMySessions(fromStr, toStr);
+      const data = await getMySessions(pktDate(from), todayStr);
       const sessions = data.sessions;
 
-      // Group by work_date
       const byDate = {};
       sessions.forEach((s) => {
         if (!byDate[s.work_date]) {
           byDate[s.work_date] = { date: s.work_date, totalMinutes: 0, sessionCount: 0 };
         }
-        if (s.status === 'completed') {
-          byDate[s.work_date].totalMinutes += s.duration_minutes;
-        }
+        byDate[s.work_date].totalMinutes += s.duration_minutes || 0;
         byDate[s.work_date].sessionCount++;
       });
 
       const sorted = Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date));
       setDailyData(sorted);
 
-      // Today's total
-      const todayStr = today.toISOString().slice(0, 10);
       const todayData = byDate[todayStr];
       setTodayMinutes(todayData ? todayData.totalMinutes : 0);
 
-      // This week total (Monday to today)
-      const dayOfWeek = today.getDay();
-      const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-      const monday = new Date(today);
-      monday.setDate(today.getDate() - mondayOffset);
+      // This week (Monday to today in PKT)
+      const todayDate = new Date(todayStr);
+      const dow = todayDate.getDay();
+      const monday = new Date(todayDate);
+      monday.setDate(todayDate.getDate() - (dow === 0 ? 6 : dow - 1));
       const mondayStr = monday.toISOString().slice(0, 10);
 
       let weekTotal = 0;
