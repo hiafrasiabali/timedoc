@@ -39,6 +39,7 @@ export default function Layout({ children }) {
               <a href="/admin">Dashboard</a>
               <a href="/admin/manage">Employees</a>
               <a href="/admin/reports">Reports</a>
+              <a href="/admin/storage">Storage</a>
             </>
           ) : (
             <a href="/dashboard">My Hours</a>

@@ -241,4 +241,99 @@ router.get('/reports/csv', (req, res) => {
   res.send(csv);
 });
 
+// GET /api/admin/storage - disk usage stats
+router.get('/storage', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const { execSync } = require('child_process');
+  const UPLOADS = path.join(__dirname, '..', 'uploads');
+
+  // Total disk
+  let diskTotal = 0, diskUsed = 0, diskFree = 0;
+  try {
+    const df = execSync("df -B1 / | tail -1").toString().trim().split(/\s+/);
+    diskTotal = parseInt(df[1]);
+    diskUsed = parseInt(df[2]);
+    diskFree = parseInt(df[3]);
+  } catch {}
+
+  // Recordings size per month
+  const months = {};
+  let totalRecSize = 0;
+  const chunks = db.prepare(
+    'SELECT r.file_path, r.file_size_mb, r.start_time, s.user_id, u.display_name FROM recording_chunks r JOIN sessions s ON r.session_id = s.id JOIN users u ON s.user_id = u.id ORDER BY r.start_time DESC'
+  ).all();
+
+  chunks.forEach((c) => {
+    const month = c.start_time.slice(0, 7); // YYYY-MM
+    if (!months[month]) months[month] = { month, sizeMb: 0, count: 0 };
+    months[month].sizeMb += c.file_size_mb || 0;
+    months[month].count++;
+    totalRecSize += c.file_size_mb || 0;
+  });
+
+  res.json({
+    disk: {
+      totalGb: Math.round(diskTotal / 1073741824 * 10) / 10,
+      usedGb: Math.round(diskUsed / 1073741824 * 10) / 10,
+      freeGb: Math.round(diskFree / 1073741824 * 10) / 10,
+      usedPercent: Math.round(diskUsed / diskTotal * 100),
+    },
+    recordings: {
+      totalSizeMb: Math.round(totalRecSize * 10) / 10,
+      totalChunks: chunks.length,
+      byMonth: Object.values(months),
+    },
+  });
+});
+
+// DELETE /api/admin/storage/cleanup?before=YYYY-MM-DD
+router.delete('/storage/cleanup', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const { before } = req.query;
+  const UPLOADS = path.join(__dirname, '..', 'uploads');
+
+  if (!before) {
+    return res.status(400).json({ error: 'before query param required (YYYY-MM-DD)' });
+  }
+
+  // Find chunks before the date
+  const chunks = db.prepare(
+    'SELECT r.* FROM recording_chunks r JOIN sessions s ON r.session_id = s.id WHERE r.start_time < ?'
+  ).all(before);
+
+  let deletedFiles = 0;
+  let freedMb = 0;
+
+  for (const c of chunks) {
+    const fp = path.join(UPLOADS, c.file_path);
+    const thumbPath = fp.replace('.webm', '_thumb.jpg');
+    try {
+      if (fs.existsSync(fp)) { fs.unlinkSync(fp); deletedFiles++; freedMb += c.file_size_mb || 0; }
+      if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+    } catch {}
+    db.prepare('DELETE FROM recording_chunks WHERE id = ?').run(c.id);
+  }
+
+  // Clean empty session directories
+  try {
+    const dirs = fs.readdirSync(UPLOADS);
+    for (const d of dirs) {
+      const dp = path.join(UPLOADS, d);
+      if (d === 'tmp' || d === '.gitkeep') continue;
+      try {
+        const files = fs.readdirSync(dp);
+        if (files.length === 0) fs.rmdirSync(dp);
+      } catch {}
+    }
+  } catch {}
+
+  res.json({
+    deleted: deletedFiles,
+    freedMb: Math.round(freedMb * 10) / 10,
+    chunksRemoved: chunks.length,
+  });
+});
+
 module.exports = router;
