@@ -26,8 +26,17 @@ const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20, // 20 attempts per window
   message: { error: 'Too many login attempts, try again later' },
+  validate: { xForwardedForHeader: false },
 });
 app.use('/api/auth/login', loginLimiter);
+
+// Request logging
+app.use('/api', (req, res, next) => {
+  if (req.path !== '/health') {
+    console.log(`${req.method} ${req.path} | Origin: ${req.headers.origin || 'none'} | Auth: ${req.headers.authorization ? 'yes' : 'no'}`);
+  }
+  next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
