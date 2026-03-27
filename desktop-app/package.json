@@ -1,6 +1,6 @@
 {
   "name": "timedoc",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "TimeDOC - Employee Time Tracking & Screen Recording",
   "main": "main.js",
   "scripts": {
@@ -10,6 +10,9 @@
   },
   "author": "TimeDOC",
   "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8"

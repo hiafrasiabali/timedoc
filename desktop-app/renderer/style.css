@@ -331,13 +331,19 @@ input:focus, select:focus {
   50% { opacity: 0.3; }
 }
 
-/* ============ Dashboard Link ============ */
+/* ============ Bottom Links ============ */
+.bottom-links {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .dashboard-link {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: auto;
   padding: 12px;
   border: 1.5px solid var(--border);
   border-radius: 10px;
@@ -354,6 +360,27 @@ input:focus, select:focus {
   color: var(--primary);
   background: var(--primary-light);
   text-decoration: none;
+}
+
+/* ============ Update Hint ============ */
+.update-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--primary);
+  font-weight: 500;
+  min-height: 16px;
+  cursor: default;
+}
+
+.update-hint.ready {
+  background: var(--primary-light);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.update-hint.ready:hover {
+  background: #dbeafe;
 }
 
 /* ============ Version ============ */

@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, desktopCapturer, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const http = require('http');
 const https = require('https');
@@ -100,7 +101,57 @@ function createTray() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  setupAutoUpdater();
 });
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    sendToRenderer('update:status', 'Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    sendToRenderer('update:status', 'Downloading v' + info.version + '...');
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    sendToRenderer('update:status', '');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendToRenderer('update:status', 'Downloading update: ' + Math.round(progress.percent) + '%');
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendToRenderer('update:status', 'ready');
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'TimeDOC v' + info.version + ' is ready. Restart now to update.',
+      buttons: ['Restart Now', 'Later'],
+    }).then((result) => {
+      if (result.response === 0) {
+        app.isQuitting = true;
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', () => {
+    sendToRenderer('update:status', '');
+  });
+
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 30 * 60 * 1000);
+}
+
+function sendToRenderer(channel, data) {
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
 
 app.on('before-quit', () => {
   app.isQuitting = true;
@@ -173,6 +224,11 @@ ipcMain.on('idle:start-monitoring', (event, { idleThresholdSeconds }) => {
 
 ipcMain.on('idle:stop-monitoring', () => {
   if (idleCheckInterval) { clearInterval(idleCheckInterval); idleCheckInterval = null; }
+});
+
+// Manual update check
+ipcMain.handle('app:check-update', () => {
+  autoUpdater.checkForUpdates().catch(() => {});
 });
 
 // Open URL in default browser

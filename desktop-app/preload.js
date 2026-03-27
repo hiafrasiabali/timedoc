@@ -13,4 +13,9 @@ contextBridge.exposeInMainWorld('timedoc', {
     ipcRenderer.on('idle:detected', (event, data) => callback(data)),
 
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+
+  // Auto-updater
+  onUpdateStatus: (callback) =>
+    ipcRenderer.on('update:status', (event, data) => callback(data)),
+  checkForUpdate: () => ipcRenderer.invoke('app:check-update'),
 });

@@ -1,4 +1,4 @@
-var APP_VERSION = '1.6.0';
+var APP_VERSION = '1.7.0';
 
 // ---- State ----
 var serverUrl = '';
@@ -358,6 +358,25 @@ function handleStop() {
     uploadStatusEl.textContent = 'Session completed';
     setTimeout(function () { uploadStatusEl.textContent = ''; }, 3000);
   }).catch(function (err) { alert('Stop failed: ' + err.message); });
+}
+
+// ---- Auto-update status ----
+var updateStatusEl = document.getElementById('update-status');
+if (window.timedoc.onUpdateStatus) {
+  window.timedoc.onUpdateStatus(function (status) {
+    if (!updateStatusEl) return;
+    if (status === 'ready') {
+      updateStatusEl.textContent = 'Update ready - click to restart';
+      updateStatusEl.className = 'update-hint ready';
+      updateStatusEl.onclick = function () { window.timedoc.checkForUpdate(); };
+    } else if (status) {
+      updateStatusEl.textContent = status;
+      updateStatusEl.className = 'update-hint';
+    } else {
+      updateStatusEl.textContent = '';
+      updateStatusEl.className = 'update-hint';
+    }
+  });
 }
 
 // ---- Init ----
