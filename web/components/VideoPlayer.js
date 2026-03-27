@@ -1,10 +1,8 @@
 import { getToken } from '../lib/api';
 
 export default function VideoPlayer({ chunkId, onClose }) {
-  // We need to pass auth token - use a proxy approach via fetch + blob
-  // since video src can't easily pass Bearer token
   const token = getToken();
-  const streamUrl = `/api/recordings/${chunkId}/stream`;
+  const videoUrl = `/api/recordings/${chunkId}/stream?token=${encodeURIComponent(token)}`;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -12,16 +10,8 @@ export default function VideoPlayer({ chunkId, onClose }) {
         <video
           controls
           autoPlay
-          src={streamUrl}
+          src={videoUrl}
           style={{ width: '100%', borderRadius: 8 }}
-          onError={(e) => {
-            // If direct src fails, try with fetch + blob
-            fetch(streamUrl, { headers: { Authorization: `Bearer ${token}` } })
-              .then((r) => r.blob())
-              .then((blob) => {
-                e.target.src = URL.createObjectURL(blob);
-              });
-          }}
         />
         <div style={{ textAlign: 'center', marginTop: 12 }}>
           <button className="btn" style={{ background: '#fff' }} onClick={onClose}>

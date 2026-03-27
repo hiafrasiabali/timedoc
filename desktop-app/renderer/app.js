@@ -166,22 +166,52 @@ function saveCurrentChunk() {
     const blob = new Blob(recordedChunks, { type: 'video/webm' });
     const endTime = new Date().toISOString();
 
-    // Convert blob to base64 and send to main process for upload
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1];
-      window.timedoc.sendChunk({
-        serverUrl,
-        token,
-        sessionId,
-        chunkNumber: currentChunkNum,
-        base64Data: base64,
-        startTime: currentStartTime,
-        endTime,
+    // Upload directly from renderer using fetch (no IPC base64 corruption)
+    uploadStatus.textContent = `Uploading chunk #${currentChunkNum}...`;
+
+    const formData = new FormData();
+    formData.append('session_id', String(sessionId));
+    formData.append('chunk_number', String(currentChunkNum));
+    formData.append('start_time', currentStartTime);
+    formData.append('end_time', endTime);
+    formData.append('chunk', blob, `chunk_${currentChunkNum}.webm`);
+
+    fetch(`${serverUrl}/api/recordings/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(() => {
+        uploadStatus.textContent = `Chunk #${currentChunkNum} uploaded`;
+        setTimeout(() => {
+          if (uploadStatus.textContent === `Chunk #${currentChunkNum} uploaded`) {
+            uploadStatus.textContent = '';
+          }
+        }, 3000);
+      })
+      .catch((err) => {
+        uploadStatus.textContent = `Chunk #${currentChunkNum} failed: ${err.message}`;
+        // Retry once after 5 seconds
+        setTimeout(() => {
+          uploadStatus.textContent = `Retrying chunk #${currentChunkNum}...`;
+          fetch(`${serverUrl}/api/recordings/upload`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData,
+          })
+            .then((res) => {
+              if (res.ok) uploadStatus.textContent = `Chunk #${currentChunkNum} uploaded (retry)`;
+              else uploadStatus.textContent = `Chunk #${currentChunkNum} retry failed`;
+            })
+            .catch(() => {
+              uploadStatus.textContent = `Chunk #${currentChunkNum} retry failed`;
+            });
+        }, 5000);
       });
-      uploadStatus.textContent = `Uploading chunk #${currentChunkNum}...`;
-    };
-    reader.readAsDataURL(blob);
   }, 500);
 }
 
