@@ -204,9 +204,32 @@ input:focus, select:focus {
 
 .date-nav {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.date-link {
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: #f1f5f9;
+  color: var(--text-light);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.date-link:hover {
+  background: #e2e8f0;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.date-link.active {
+  background: var(--primary);
+  color: #fff;
 }
 
 .date-nav input[type="date"] {

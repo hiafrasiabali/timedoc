@@ -18,13 +18,13 @@ export default function EmployeeDetail() {
   const [loading, setLoading] = useState(true);
   const [chunksLoading, setChunksLoading] = useState(false);
 
+  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+
   useEffect(() => {
     if (!id) return;
-    const today = new Date();
-    const fromDate = new Date(today);
-    fromDate.setDate(fromDate.getDate() - 30);
-    setFrom(fromDate.toISOString().slice(0, 10));
-    setTo(today.toISOString().slice(0, 10));
+    setFrom(todayStr());
+    setTo(todayStr());
   }, [id]);
 
   useEffect(() => {
@@ -105,6 +105,9 @@ export default function EmployeeDetail() {
       </div>
 
       <div className="date-nav">
+        <a href="#" className={from === todayStr() && to === todayStr() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(todayStr()); setTo(todayStr()); }}>Today</a>
+        <a href="#" className={from === yesterdayStr() && to === yesterdayStr() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(yesterdayStr()); setTo(yesterdayStr()); }}>Yesterday</a>
+        <span style={{ color: 'var(--border)' }}>|</span>
         <label>From:</label>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <label>To:</label>

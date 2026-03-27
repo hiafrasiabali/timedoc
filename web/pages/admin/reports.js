@@ -10,15 +10,13 @@ export default function Reports() {
   const [loading, setLoading] = useState(false);
   const [expandedEmployee, setExpandedEmployee] = useState(null);
 
+  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function yesterdayStr() { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+  function weekStartStr() { const t = new Date(); const dow = t.getDay(); t.setDate(t.getDate() - (dow === 0 ? 6 : dow - 1)); return t.toISOString().slice(0, 10); }
+
   useEffect(() => {
-    // Default: current week (Monday to today)
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - mondayOffset);
-    setFrom(monday.toISOString().slice(0, 10));
-    setTo(today.toISOString().slice(0, 10));
+    setFrom(todayStr());
+    setTo(todayStr());
   }, []);
 
   useEffect(() => {
@@ -64,6 +62,10 @@ export default function Reports() {
       </div>
 
       <div className="date-nav">
+        <a href="#" className={from === todayStr() && to === todayStr() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(todayStr()); setTo(todayStr()); }}>Today</a>
+        <a href="#" className={from === yesterdayStr() && to === yesterdayStr() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(yesterdayStr()); setTo(yesterdayStr()); }}>Yesterday</a>
+        <a href="#" className={from === weekStartStr() && to === todayStr() ? 'date-link active' : 'date-link'} onClick={(e) => { e.preventDefault(); setFrom(weekStartStr()); setTo(todayStr()); }}>This Week</a>
+        <span style={{ color: 'var(--border)' }}>|</span>
         <label>From:</label>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <label>To:</label>
