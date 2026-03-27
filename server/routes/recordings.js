@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -22,7 +23,7 @@ const upload = multer({
 });
 
 // POST /api/recordings/upload
-router.post('/upload', authMiddleware, upload.single('chunk'), (req, res) => {
+router.post('/upload', authMiddleware, upload.single('chunk'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
@@ -49,10 +50,28 @@ router.post('/upload', authMiddleware, upload.single('chunk'), (req, res) => {
   // Move file from tmp to session directory
   const sessionDir = path.join(UPLOADS_DIR, String(session_id));
   fs.mkdirSync(sessionDir, { recursive: true });
+  const rawPath = path.join(sessionDir, `chunk_${chunk_number}_raw.webm`);
   const finalPath = path.join(sessionDir, `chunk_${chunk_number}.webm`);
-  fs.renameSync(req.file.path, finalPath);
+  fs.renameSync(req.file.path, rawPath);
 
-  const fileSizeMb = req.file.size / (1024 * 1024);
+  // Remux with ffmpeg to add duration/seek metadata (makes video seekable)
+  try {
+    await new Promise((resolve, reject) => {
+      execFile('ffmpeg', ['-i', rawPath, '-c', 'copy', '-y', finalPath], { timeout: 30000 }, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    fs.unlinkSync(rawPath);
+  } catch (e) {
+    // If ffmpeg fails, use raw file as-is
+    if (fs.existsSync(rawPath)) {
+      fs.renameSync(rawPath, finalPath);
+    }
+  }
+
+  const stat = fs.statSync(finalPath);
+  const fileSizeMb = stat.size / (1024 * 1024);
   const relativePath = path.relative(UPLOADS_DIR, finalPath);
 
   const result = db.prepare(

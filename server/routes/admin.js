@@ -27,14 +27,14 @@ router.get('/dashboard', (req, res) => {
   ).all();
 
   const dashboard = employees.map((emp) => {
-    // Today's hours
+    // Today's hours (include active sessions too)
     const todaySessions = db.prepare(
-      "SELECT SUM(duration_minutes) as total FROM sessions WHERE user_id = ? AND work_date = ? AND status = 'completed'"
+      "SELECT SUM(duration_minutes) as total FROM sessions WHERE user_id = ? AND work_date = ?"
     ).get(emp.id, today);
 
     // Week's hours
     const weekSessions = db.prepare(
-      "SELECT SUM(duration_minutes) as total FROM sessions WHERE user_id = ? AND work_date BETWEEN ? AND ? AND status = 'completed'"
+      "SELECT SUM(duration_minutes) as total FROM sessions WHERE user_id = ? AND work_date BETWEEN ? AND ?"
     ).get(emp.id, weekStart, today);
 
     // Is currently online (has active session)
