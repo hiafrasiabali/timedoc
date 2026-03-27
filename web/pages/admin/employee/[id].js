@@ -33,6 +33,8 @@ export default function EmployeeDetail() {
 
   const loadSessions = async () => {
     setLoading(true);
+    setAllChunks([]);
+    setSelectedDate(null);
     try {
       const data = await getEmployeeSessions(id, from, to);
       setEmployee(data.employee);
@@ -46,7 +48,13 @@ export default function EmployeeDetail() {
         byDate[s.work_date].sessionCount++;
         byDate[s.work_date].sessions.push(s);
       });
-      setDailyData(Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date)));
+      const sorted = Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date));
+      setDailyData(sorted);
+
+      // Auto-load activity for first date
+      if (sorted.length > 0) {
+        loadChunksForDate(sorted[0].date, sorted[0].sessions);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -54,21 +62,16 @@ export default function EmployeeDetail() {
     }
   };
 
-  const viewDate = async (date) => {
+  const loadChunksForDate = async (date, sessions) => {
     setSelectedDate(date);
     setChunksLoading(true);
     setAllChunks([]);
     try {
-      const dayData = dailyData.find((d) => d.date === date);
-      if (!dayData) return;
-
       const chunks = [];
-      for (const s of dayData.sessions) {
+      for (const s of sessions) {
         const detail = await getSession(s.id);
         if (detail.chunks) {
-          detail.chunks.forEach((c) => {
-            chunks.push({ ...c, sessionId: s.id });
-          });
+          detail.chunks.forEach((c) => chunks.push({ ...c, sessionId: s.id }));
         }
       }
       chunks.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
@@ -78,6 +81,12 @@ export default function EmployeeDetail() {
     } finally {
       setChunksLoading(false);
     }
+  };
+
+  const viewDate = (date) => {
+    const dayData = dailyData.find((d) => d.date === date);
+    if (!dayData) return;
+    loadChunksForDate(date, dayData.sessions);
   };
 
   // Group chunks by hour
