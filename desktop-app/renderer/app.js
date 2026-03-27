@@ -1,3 +1,5 @@
+const APP_VERSION = '1.1.0';
+
 // ---- State ----
 let serverUrl = '';
 let token = '';
@@ -35,6 +37,35 @@ const resumeBtn = document.getElementById('resume-btn');
 const stopBtn = document.getElementById('stop-btn');
 const uploadStatus = document.getElementById('upload-status');
 const recordingIndicator = document.getElementById('recording-indicator');
+const versionDisplay = document.getElementById('version-display');
+
+if (versionDisplay) versionDisplay.textContent = 'v' + APP_VERSION;
+
+// ---- Direct API calls (no IPC needed) ----
+async function apiCall(method, path, body) {
+  const options = {
+    method,
+    headers: {},
+  };
+
+  if (token) {
+    options.headers['Authorization'] = 'Bearer ' + token;
+  }
+
+  if (body) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+
+  const res = await fetch(serverUrl + path, options);
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'HTTP ' + res.status);
+  }
+
+  return data;
+}
 
 // ---- Screens ----
 function showScreen(screen) {
@@ -51,7 +82,7 @@ function populateWorkDates() {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = d.toISOString().slice(0, 10);
-    const label = i === 0 ? `${dateStr} (Today)` : i === 1 ? `${dateStr} (Yesterday)` : dateStr;
+    const label = i === 0 ? dateStr + ' (Today)' : i === 1 ? dateStr + ' (Yesterday)' : dateStr;
     const opt = document.createElement('option');
     opt.value = dateStr;
     opt.textContent = label;
@@ -64,12 +95,12 @@ function formatTime(seconds) {
   const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
   const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
   const s = String(seconds % 60).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+  return h + ':' + m + ':' + s;
 }
 
 function startTimer() {
   if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(() => {
+  timerInterval = setInterval(function () {
     elapsedSeconds++;
     timerDisplay.textContent = formatTime(elapsedSeconds);
   }, 1000);
@@ -91,14 +122,13 @@ function resetTimer() {
 // ---- Recording ----
 async function startRecording() {
   try {
-    // Use Electron's desktopCapturer to get screen source
-    const sources = await window.timedoc.getScreenSources();
+    var sources = await window.timedoc.getScreenSources();
     if (!sources || sources.length === 0) {
       throw new Error('No screen sources found');
     }
 
-    const screenSource = sources[0]; // Primary screen
-    const stream = await navigator.mediaDevices.getUserMedia({
+    var screenSource = sources[0];
+    var stream = await navigator.mediaDevices.getUserMedia({
       video: {
         mandatory: {
           chromeMediaSource: 'desktop',
@@ -114,8 +144,7 @@ async function startRecording() {
     chunkNumber = 0;
     startNewChunk(stream);
 
-    // Every 5 minutes, save current chunk and start new one
-    chunkInterval = setInterval(() => {
+    chunkInterval = setInterval(function () {
       saveCurrentChunk();
       startNewChunk(stream);
     }, CHUNK_DURATION_MS);
@@ -132,96 +161,73 @@ function startNewChunk(stream) {
   recordedChunks = [];
   chunkStartTime = new Date().toISOString();
 
-  // Use a lower bitrate for smaller files
-  const options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 200000 };
-
   try {
-    mediaRecorder = new MediaRecorder(stream, options);
-  } catch {
-    // Fallback if vp8 not supported
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp8',
+      videoBitsPerSecond: 200000,
+    });
+  } catch (e) {
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
   }
 
-  mediaRecorder.ondataavailable = (e) => {
+  mediaRecorder.ondataavailable = function (e) {
     if (e.data.size > 0) {
       recordedChunks.push(e.data);
     }
   };
 
-  // onstop handler will be set dynamically in saveCurrentChunk
-  // to capture the correct chunk number and start time
-
-  mediaRecorder.start(5000); // Collect data every 5 seconds
+  mediaRecorder.start(5000);
 }
 
 function uploadChunkToServer(blob, chunkNum, startTime, endTime) {
-  uploadStatus.textContent = `Uploading chunk #${chunkNum} (${(blob.size / 1024).toFixed(0)} KB)...`;
+  uploadStatus.textContent = 'Uploading chunk #' + chunkNum + ' (' + (blob.size / 1024).toFixed(0) + ' KB)...';
 
-  const formData = new FormData();
+  var formData = new FormData();
   formData.append('session_id', String(sessionId));
   formData.append('chunk_number', String(chunkNum));
   formData.append('start_time', startTime);
   formData.append('end_time', endTime);
-  formData.append('chunk', blob, `chunk_${chunkNum}.webm`);
+  formData.append('chunk', blob, 'chunk_' + chunkNum + '.webm');
 
-  fetch(`${serverUrl}/api/recordings/upload`, {
+  fetch(serverUrl + '/api/recordings/upload', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
+    headers: { 'Authorization': 'Bearer ' + token },
     body: formData,
   })
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    .then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
     })
-    .then(() => {
-      uploadStatus.textContent = `Chunk #${chunkNum} uploaded`;
-      setTimeout(() => {
-        if (uploadStatus.textContent === `Chunk #${chunkNum} uploaded`) {
+    .then(function () {
+      uploadStatus.textContent = 'Chunk #' + chunkNum + ' uploaded';
+      setTimeout(function () {
+        if (uploadStatus.textContent === 'Chunk #' + chunkNum + ' uploaded') {
           uploadStatus.textContent = '';
         }
       }, 3000);
     })
-    .catch((err) => {
-      uploadStatus.textContent = `Chunk #${chunkNum} failed: ${err.message}. Retrying...`;
-      setTimeout(() => {
-        fetch(`${serverUrl}/api/recordings/upload`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-          body: formData,
-        })
-          .then((res) => {
-            if (res.ok) uploadStatus.textContent = `Chunk #${chunkNum} uploaded (retry)`;
-            else uploadStatus.textContent = `Chunk #${chunkNum} retry failed`;
-          })
-          .catch(() => {
-            uploadStatus.textContent = `Chunk #${chunkNum} retry failed`;
-          });
-      }, 5000);
+    .catch(function (err) {
+      uploadStatus.textContent = 'Chunk #' + chunkNum + ' failed: ' + err.message;
     });
 }
 
 function saveCurrentChunk() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
 
-  // Capture values BEFORE stop, since startNewChunk will overwrite them
-  const currentChunkNum = chunkNumber;
-  const currentStartTime = chunkStartTime;
-  const currentChunks = recordedChunks;
+  var currentChunkNum = chunkNumber;
+  var currentStartTime = chunkStartTime;
+  var currentChunks = recordedChunks;
 
-  mediaRecorder.onstop = () => {
-    const endTime = new Date().toISOString();
+  mediaRecorder.onstop = function () {
+    var endTime = new Date().toISOString();
     if (currentChunks.length === 0) return;
-
-    const blob = new Blob(currentChunks, { type: 'video/webm' });
+    var blob = new Blob(currentChunks, { type: 'video/webm' });
     if (blob.size === 0) return;
-
     uploadChunkToServer(blob, currentChunkNum, currentStartTime, endTime);
   };
 
-  // requestData forces ondataavailable to fire with any buffered data, then stop triggers onstop
   mediaRecorder.requestData();
   mediaRecorder.stop();
-  }, 500);
 }
 
 function stopRecording() {
@@ -230,54 +236,32 @@ function stopRecording() {
     chunkInterval = null;
   }
 
-  // Save final chunk
   saveCurrentChunk();
 
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-  }
-
-  // Stop all tracks
   if (mediaRecorder && mediaRecorder.stream) {
-    mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+    mediaRecorder.stream.getTracks().forEach(function (t) { t.stop(); });
   }
 
   mediaRecorder = null;
   recordingIndicator.style.display = 'none';
 }
 
-// ---- Upload Feedback ----
-window.timedoc.onChunkUploaded((data) => {
-  if (data.success) {
-    uploadStatus.textContent = `Chunk #${data.chunkNumber} uploaded`;
-    setTimeout(() => {
-      if (uploadStatus.textContent === `Chunk #${data.chunkNumber} uploaded`) {
-        uploadStatus.textContent = '';
-      }
-    }, 3000);
-  } else {
-    uploadStatus.textContent = `Chunk #${data.chunkNumber} failed: ${data.error}`;
-  }
-});
-
 // ---- Idle Detection ----
-window.timedoc.onIdleDetected(async (data) => {
-  if (sessionStatus === 'active') {
-    // Auto-pause on idle
-    try {
-      const r = await window.timedoc.pauseSession(serverUrl, token);
-      if (r.success) {
-        sessionStatus = 'paused';
-        pauseTimer();
-        updateControls();
-        timerStatus.textContent = 'Paused (idle detected)';
-        timerStatus.className = 'timer-status paused';
-      }
-    } catch (err) {
-      console.error('Auto-pause failed:', err);
+if (window.timedoc && window.timedoc.onIdleDetected) {
+  window.timedoc.onIdleDetected(function () {
+    if (sessionStatus === 'active') {
+      apiCall('POST', '/api/sessions/pause', {})
+        .then(function () {
+          sessionStatus = 'paused';
+          pauseTimer();
+          updateControls();
+          timerStatus.textContent = 'Paused (idle detected)';
+          timerStatus.className = 'timer-status paused';
+        })
+        .catch(function () {});
     }
-  }
-});
+  });
+}
 
 // ---- UI Controls ----
 function updateControls() {
@@ -313,15 +297,15 @@ function updateControls() {
 // ---- Event Handlers ----
 
 // Login
-loginForm.addEventListener('submit', async (e) => {
+loginForm.addEventListener('submit', function (e) {
   e.preventDefault();
   loginError.textContent = '';
   loginBtn.textContent = 'Logging in...';
   loginBtn.disabled = true;
 
   serverUrl = document.getElementById('server-url').value.replace(/\/+$/, '');
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
+  var username = document.getElementById('username').value;
+  var password = document.getElementById('password').value;
 
   if (!serverUrl || !username || !password) {
     loginError.textContent = 'All fields are required';
@@ -330,37 +314,39 @@ loginForm.addEventListener('submit', async (e) => {
     return;
   }
 
-  try {
-    const response = await window.timedoc.login(serverUrl, username, password);
-    if (!response.success) {
-      throw new Error(response.error);
-    }
-    const result = response.data;
-    if (!result || !result.token) {
-      throw new Error('Invalid response from server');
-    }
-    token = result.token;
-    user = result.user;
+  fetch(serverUrl + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: username, password: password }),
+  })
+    .then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+        return data;
+      });
+    })
+    .then(function (data) {
+      token = data.token;
+      user = data.user;
+      localStorage.setItem('timedoc_server', serverUrl);
 
-    // Save server URL for next launch
-    localStorage.setItem('timedoc_server', serverUrl);
-
-    displayName.textContent = user.display_name;
-    populateWorkDates();
-    resetTimer();
-    sessionId = null;
-    sessionStatus = null;
-    updateControls();
-    showScreen(timerScreen);
-  } catch (err) {
-    loginError.textContent = err.message || 'Connection failed. Check server URL.';
-    loginBtn.textContent = 'Login';
-    loginBtn.disabled = false;
-  }
+      displayName.textContent = user.display_name;
+      populateWorkDates();
+      resetTimer();
+      sessionId = null;
+      sessionStatus = null;
+      updateControls();
+      showScreen(timerScreen);
+    })
+    .catch(function (err) {
+      loginError.textContent = err.message || 'Connection failed';
+      loginBtn.textContent = 'Login';
+      loginBtn.disabled = false;
+    });
 });
 
 // Logout
-logoutBtn.addEventListener('click', () => {
+logoutBtn.addEventListener('click', function () {
   if (sessionStatus) {
     if (!confirm('You have an active session. Stop and logout?')) return;
     handleStop();
@@ -371,91 +357,100 @@ logoutBtn.addEventListener('click', () => {
 });
 
 // Start
-startBtn.addEventListener('click', async () => {
+startBtn.addEventListener('click', function () {
   startBtn.disabled = true;
   startBtn.textContent = 'Starting...';
 
-  try {
-    const workDate = workDateSelect.value;
-    const response = await window.timedoc.startSession(serverUrl, token, workDate);
-    if (!response.success) throw new Error(response.error);
-    sessionId = response.data.session.id;
-    sessionStatus = 'active';
-    elapsedSeconds = 0;
-    startTimer();
-    updateControls();
+  var workDate = workDateSelect.value;
 
-    // Start recording
-    await startRecording();
+  apiCall('POST', '/api/sessions/start', { work_date: workDate })
+    .then(function (data) {
+      sessionId = data.session.id;
+      sessionStatus = 'active';
+      elapsedSeconds = 0;
+      startTimer();
+      updateControls();
 
-    // Start idle monitoring (5 min threshold)
-    window.timedoc.startIdleMonitoring(300);
+      // Notify main process for quit cleanup
+      if (window.timedoc && window.timedoc.notifySessionStarted) {
+        window.timedoc.notifySessionStarted(serverUrl, token);
+      }
 
-    // Start heartbeat - update duration on server every 60 seconds
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    heartbeatInterval = setInterval(() => {
-      window.timedoc.sendHeartbeat(serverUrl, token).catch(() => {});
-    }, 60000);
-  } catch (err) {
-    alert('Failed to start: ' + err.message);
-  } finally {
-    startBtn.disabled = false;
-    startBtn.textContent = 'Start';
-  }
+      startRecording();
+
+      if (window.timedoc) window.timedoc.startIdleMonitoring(300);
+
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      heartbeatInterval = setInterval(function () {
+        apiCall('POST', '/api/sessions/heartbeat', {}).catch(function () {});
+      }, 60000);
+    })
+    .catch(function (err) {
+      alert('Failed to start: ' + err.message);
+    })
+    .finally(function () {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start';
+    });
 });
 
 // Pause
-pauseBtn.addEventListener('click', async () => {
-  try {
-    const r = await window.timedoc.pauseSession(serverUrl, token);
-    if (!r.success) throw new Error(r.error);
-    sessionStatus = 'paused';
-    pauseTimer();
-    updateControls();
-  } catch (err) {
-    alert('Failed to pause: ' + err.message);
-  }
+pauseBtn.addEventListener('click', function () {
+  apiCall('POST', '/api/sessions/pause', {})
+    .then(function () {
+      sessionStatus = 'paused';
+      pauseTimer();
+      updateControls();
+    })
+    .catch(function (err) {
+      alert('Failed to pause: ' + err.message);
+    });
 });
 
 // Resume
-resumeBtn.addEventListener('click', async () => {
-  try {
-    const r = await window.timedoc.resumeSession(serverUrl, token);
-    if (!r.success) throw new Error(r.error);
-    sessionStatus = 'active';
-    startTimer();
-    updateControls();
-  } catch (err) {
-    alert('Failed to resume: ' + err.message);
-  }
+resumeBtn.addEventListener('click', function () {
+  apiCall('POST', '/api/sessions/resume', {})
+    .then(function () {
+      sessionStatus = 'active';
+      startTimer();
+      updateControls();
+    })
+    .catch(function (err) {
+      alert('Failed to resume: ' + err.message);
+    });
 });
 
 // Stop
-stopBtn.addEventListener('click', () => {
+stopBtn.addEventListener('click', function () {
   if (!confirm('Stop this session?')) return;
   handleStop();
 });
 
-async function handleStop() {
-  try {
-    stopRecording();
-    window.timedoc.stopIdleMonitoring();
-    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-    const r = await window.timedoc.stopSession(serverUrl, token);
-    if (!r.success) throw new Error(r.error);
-    sessionStatus = null;
-    sessionId = null;
-    pauseTimer();
-    updateControls();
-    uploadStatus.textContent = 'Session completed';
-    setTimeout(() => (uploadStatus.textContent = ''), 3000);
-  } catch (err) {
-    alert('Failed to stop: ' + err.message);
-  }
+function handleStop() {
+  stopRecording();
+  if (window.timedoc) window.timedoc.stopIdleMonitoring();
+  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+
+  apiCall('POST', '/api/sessions/stop', {})
+    .then(function () {
+      sessionStatus = null;
+      sessionId = null;
+      pauseTimer();
+      updateControls();
+      uploadStatus.textContent = 'Session completed';
+      setTimeout(function () { uploadStatus.textContent = ''; }, 3000);
+
+      if (window.timedoc && window.timedoc.notifySessionStopped) {
+        window.timedoc.notifySessionStopped();
+      }
+    })
+    .catch(function (err) {
+      alert('Failed to stop: ' + err.message);
+    });
 }
 
 // ---- Init ----
-const savedServer = localStorage.getItem('timedoc_server');
+var savedServer = localStorage.getItem('timedoc_server');
 if (savedServer) {
   document.getElementById('server-url').value = savedServer;
 }

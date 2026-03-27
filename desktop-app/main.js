@@ -3,14 +3,12 @@ const path = require('path');
 
 let mainWindow = null;
 let tray = null;
-
-// Track active session for cleanup on quit
-let activeSessionInfo = null; // { serverUrl, token }
+let activeSessionInfo = null; // { serverUrl, token } for quit cleanup
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 380,
-    height: 520,
+    height: 550,
     resizable: false,
     maximizable: false,
     fullscreenable: false,
@@ -26,7 +24,6 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   mainWindow.on('close', (e) => {
-    // Minimize to tray instead of closing
     if (!app.isQuitting) {
       e.preventDefault();
       mainWindow.hide();
@@ -35,36 +32,27 @@ function createWindow() {
 }
 
 function createTray() {
-  // Use a simple default icon - on Windows electron provides a default
   try {
     tray = new Tray(path.join(__dirname, 'renderer', 'icon.png'));
   } catch {
-    // If icon doesn't exist, skip tray icon (will work after build with proper icon)
     return;
   }
 
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Show TimeDOC',
-      click: () => {
-        if (mainWindow) mainWindow.show();
-      },
+      click: () => { if (mainWindow) mainWindow.show(); },
     },
     { type: 'separator' },
     {
       label: 'Quit',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      },
+      click: () => { app.isQuitting = true; app.quit(); },
     },
   ]);
 
   tray.setToolTip('TimeDOC');
   tray.setContextMenu(contextMenu);
-  tray.on('click', () => {
-    if (mainWindow) mainWindow.show();
-  });
+  tray.on('click', () => { if (mainWindow) mainWindow.show(); });
 }
 
 app.whenReady().then(() => {
@@ -72,19 +60,38 @@ app.whenReady().then(() => {
   createTray();
 });
 
+// Auto-stop session on quit
 app.on('before-quit', async (e) => {
   app.isQuitting = true;
 
-  // Auto-stop active session when app is closing
   if (activeSessionInfo) {
     e.preventDefault();
+    const { serverUrl, token } = activeSessionInfo;
+    activeSessionInfo = null;
+
     try {
-      const { stopSession } = require('./src/auth');
-      await stopSession(activeSessionInfo.serverUrl, activeSessionInfo.token);
+      const http = require(serverUrl.startsWith('https') ? 'https' : 'http');
+      const url = new URL('/api/sessions/stop', serverUrl);
+      await new Promise((resolve) => {
+        const req = http.request({
+          hostname: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? 443 : 80),
+          path: url.pathname,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+        }, () => resolve());
+        req.on('error', () => resolve());
+        req.setTimeout(5000, () => { req.destroy(); resolve(); });
+        req.write('{}');
+        req.end();
+      });
     } catch (err) {
       console.error('Failed to stop session on quit:', err.message);
     }
-    activeSessionInfo = null;
+
     app.quit();
   }
 });
@@ -95,108 +102,16 @@ app.on('window-all-closed', () => {
 
 // ---- IPC Handlers ----
 
-// Auth
-ipcMain.handle('auth:login', async (event, { serverUrl, username, password }) => {
-  try {
-    const { login } = require('./src/auth');
-    const result = await login(serverUrl, username, password);
-    return { success: true, data: result };
-  } catch (err) {
-    return { success: false, error: err.message || 'Connection failed' };
-  }
+// Session lifecycle - renderer notifies us so we can cleanup on quit
+ipcMain.on('session:started', (event, { serverUrl, token }) => {
+  activeSessionInfo = { serverUrl, token };
 });
 
-// Session control
-ipcMain.handle('session:start', async (event, { serverUrl, token, workDate }) => {
-  try {
-    const { startSession } = require('./src/auth');
-    const result = await startSession(serverUrl, token, workDate);
-    activeSessionInfo = { serverUrl, token };
-    return { success: true, data: result };
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+ipcMain.on('session:stopped', () => {
+  activeSessionInfo = null;
 });
 
-ipcMain.handle('session:heartbeat', async (event, { serverUrl, token }) => {
-  try {
-    const { heartbeat } = require('./src/auth');
-    return await heartbeat(serverUrl, token);
-  } catch {
-    return null;
-  }
-});
-
-ipcMain.handle('session:stop', async (event, { serverUrl, token }) => {
-  try {
-    const { stopSession } = require('./src/auth');
-    const result = await stopSession(serverUrl, token);
-    activeSessionInfo = null;
-    return { success: true, data: result };
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
-});
-
-ipcMain.handle('session:pause', async (event, { serverUrl, token }) => {
-  try {
-    const { pauseSession } = require('./src/auth');
-    return { success: true, data: await pauseSession(serverUrl, token) };
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
-});
-
-ipcMain.handle('session:resume', async (event, { serverUrl, token }) => {
-  try {
-    const { resumeSession } = require('./src/auth');
-    return { success: true, data: await resumeSession(serverUrl, token) };
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
-});
-
-// Recording control - receive base64 data from renderer, save to temp, upload
-ipcMain.on('recording:chunk-ready', async (event, { serverUrl, token, sessionId, chunkNumber, base64Data, startTime, endTime }) => {
-  const { uploadChunk } = require('./src/uploader');
-  const fs = require('fs');
-  const tempDir = path.join(app.getPath('temp'), 'timedoc-recordings');
-  fs.mkdirSync(tempDir, { recursive: true });
-
-  const filePath = path.join(tempDir, `chunk_${sessionId}_${chunkNumber}.webm`);
-  fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
-
-  try {
-    await uploadChunk(serverUrl, token, sessionId, chunkNumber, filePath, startTime, endTime);
-    event.reply('recording:chunk-uploaded', { chunkNumber, success: true });
-  } catch (err) {
-    event.reply('recording:chunk-uploaded', { chunkNumber, success: false, error: err.message });
-  }
-});
-
-// Idle detection
-let idleCheckInterval = null;
-
-ipcMain.on('idle:start-monitoring', (event, { idleThresholdSeconds }) => {
-  const threshold = idleThresholdSeconds || 300; // 5 minutes default
-  if (idleCheckInterval) clearInterval(idleCheckInterval);
-
-  idleCheckInterval = setInterval(() => {
-    const idleTime = powerMonitor.getSystemIdleTime();
-    if (idleTime >= threshold) {
-      event.reply('idle:detected', { idleSeconds: idleTime });
-    }
-  }, 10000); // Check every 10 seconds
-});
-
-ipcMain.on('idle:stop-monitoring', () => {
-  if (idleCheckInterval) {
-    clearInterval(idleCheckInterval);
-    idleCheckInterval = null;
-  }
-});
-
-// Get screen sources for recording
+// Desktop capturer - must run in main process
 ipcMain.handle('app:get-screen-sources', async () => {
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
@@ -205,7 +120,24 @@ ipcMain.handle('app:get-screen-sources', async () => {
   return sources.map((s) => ({ id: s.id, name: s.name }));
 });
 
-// Get temp path for recordings
-ipcMain.handle('app:get-temp-path', () => {
-  return path.join(app.getPath('temp'), 'timedoc-recordings');
+// Idle detection - uses powerMonitor
+let idleCheckInterval = null;
+
+ipcMain.on('idle:start-monitoring', (event, { idleThresholdSeconds }) => {
+  const threshold = idleThresholdSeconds || 300;
+  if (idleCheckInterval) clearInterval(idleCheckInterval);
+
+  idleCheckInterval = setInterval(() => {
+    const idleTime = powerMonitor.getSystemIdleTime();
+    if (idleTime >= threshold) {
+      event.reply('idle:detected', { idleSeconds: idleTime });
+    }
+  }, 10000);
+});
+
+ipcMain.on('idle:stop-monitoring', () => {
+  if (idleCheckInterval) {
+    clearInterval(idleCheckInterval);
+    idleCheckInterval = null;
+  }
 });
