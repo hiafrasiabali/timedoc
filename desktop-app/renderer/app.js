@@ -1,4 +1,4 @@
-var APP_VERSION = '1.7.2';
+var APP_VERSION = '1.7.3';
 
 // ---- State ----
 var serverUrl = '';
@@ -135,15 +135,18 @@ function startRecording() {
 
 function startNewChunk(stream) {
   chunkNumber++;
-  recordedChunks = [];
+  // Each recorder gets its OWN local array - prevents cross-contamination
+  var myChunks = [];
+  recordedChunks = myChunks;
   chunkStartTime = new Date().toISOString();
   try {
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 200000 });
   } catch (e) {
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
   }
+  // Push to local myChunks, NOT global recordedChunks
   mediaRecorder.ondataavailable = function (e) {
-    if (e.data.size > 0) recordedChunks.push(e.data);
+    if (e.data.size > 0) myChunks.push(e.data);
   };
   mediaRecorder.start(5000);
 }
@@ -152,17 +155,19 @@ function saveCurrentChunk() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
   var num = chunkNumber;
   var start = chunkStartTime;
+  // recordedChunks points to the current recorder's local array
   var chunks = recordedChunks;
+  var recorder = mediaRecorder;
 
-  mediaRecorder.onstop = function () {
+  recorder.onstop = function () {
     var end = new Date().toISOString();
     if (chunks.length === 0) return;
     var blob = new Blob(chunks, { type: 'video/webm' });
     if (blob.size === 0) return;
     uploadChunk(blob, num, start, end);
   };
-  mediaRecorder.requestData();
-  mediaRecorder.stop();
+  recorder.requestData();
+  recorder.stop();
 }
 
 function uploadChunk(blob, num, start, end) {
