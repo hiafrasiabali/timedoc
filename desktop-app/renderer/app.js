@@ -1,4 +1,4 @@
-var APP_VERSION = '1.8.0';
+var APP_VERSION = '1.8.1';
 
 // ---- State ----
 var serverUrl = '';
@@ -39,8 +39,6 @@ var timerDisplay = document.getElementById('timer-display');
 var timerStatusEl = document.getElementById('timer-status');
 var workDateSelect = document.getElementById('work-date');
 var startBtn = document.getElementById('start-btn');
-var pauseBtn = document.getElementById('pause-btn');
-var resumeBtn = document.getElementById('resume-btn');
 var stopBtn = document.getElementById('stop-btn');
 var uploadStatusEl = document.getElementById('upload-status');
 var recordingIndicator = document.getElementById('recording-indicator');
@@ -231,7 +229,6 @@ function handleSessionLost() {
   // Session was cleaned up by server (internet lost > 5 min, sleep, etc.)
   // Stop everything locally and show message
   stopRecording();
-  window.timedoc.stopIdleMonitoring();
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   sessionStatus = null;
   sessionId = null;
@@ -254,35 +251,16 @@ setInterval(function () {
   }
 }, 5000);
 
-// ---- Idle Detection ----
-if (window.timedoc.onIdleDetected) {
-  window.timedoc.onIdleDetected(function () {
-    if (sessionStatus === 'active') {
-      api('POST', '/api/sessions/pause').then(function () {
-        sessionStatus = 'paused';
-        pauseTimer();
-        updateControls();
-        timerStatusEl.textContent = 'Paused (idle)';
-        timerStatusEl.className = 'timer-status paused';
-      }).catch(function () {});
-    }
-  });
-}
 
 // ---- Controls ----
 function updateControls() {
   startBtn.style.display = sessionStatus ? 'none' : 'block';
-  pauseBtn.style.display = sessionStatus === 'active' ? 'block' : 'none';
-  resumeBtn.style.display = sessionStatus === 'paused' ? 'block' : 'none';
   stopBtn.style.display = sessionStatus ? 'block' : 'none';
   workDateSelect.disabled = !!sessionStatus;
 
   if (sessionStatus === 'active') {
     timerStatusEl.textContent = 'Working';
     timerStatusEl.className = 'timer-status active';
-  } else if (sessionStatus === 'paused') {
-    timerStatusEl.textContent = 'On Break';
-    timerStatusEl.className = 'timer-status paused';
   } else {
     timerStatusEl.textContent = 'Ready';
     timerStatusEl.className = 'timer-status';
@@ -376,7 +354,6 @@ startBtn.addEventListener('click', function () {
       startTimer();
       updateControls();
       startRecording();
-      window.timedoc.startIdleMonitoring(300);
 
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       heartbeatInterval = setInterval(sendHeartbeat, 60000);
@@ -390,34 +367,6 @@ startBtn.addEventListener('click', function () {
     });
 });
 
-// ---- Pause ----
-pauseBtn.addEventListener('click', function () {
-  pauseBtn.disabled = true;
-  api('POST', '/api/sessions/pause').then(function () {
-    sessionStatus = 'paused';
-    pauseTimer();
-    updateControls();
-  }).catch(function (err) {
-    alert('Pause failed: ' + err.message);
-  }).finally(function () {
-    pauseBtn.disabled = false;
-  });
-});
-
-// ---- Resume ----
-resumeBtn.addEventListener('click', function () {
-  resumeBtn.disabled = true;
-  api('POST', '/api/sessions/resume').then(function () {
-    sessionStatus = 'active';
-    startTimer();
-    updateControls();
-  }).catch(function (err) {
-    alert('Resume failed: ' + err.message);
-  }).finally(function () {
-    resumeBtn.disabled = false;
-  });
-});
-
 // ---- Stop ----
 stopBtn.addEventListener('click', function () {
   if (!confirm('Stop this session?')) return;
@@ -426,7 +375,6 @@ stopBtn.addEventListener('click', function () {
 
 function handleStop() {
   stopRecording();
-  window.timedoc.stopIdleMonitoring();
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
 
   api('POST', '/api/sessions/stop').then(function () {
