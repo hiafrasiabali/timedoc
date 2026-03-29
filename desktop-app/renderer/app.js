@@ -1,4 +1,4 @@
-var APP_VERSION = '1.8.2';
+var APP_VERSION = '1.8.3';
 
 // ---- State ----
 var serverUrl = '';
@@ -406,21 +406,41 @@ function handleStop() {
   });
 }
 
-// ---- Auto-update status ----
+// ---- Auto-update ----
+var updateOverlay = document.getElementById('update-overlay');
+var updateProgress = document.getElementById('update-progress');
+var updateBar = document.getElementById('update-bar');
 var updateStatusEl = document.getElementById('update-status');
+
 if (window.timedoc.onUpdateStatus) {
   window.timedoc.onUpdateStatus(function (status) {
-    if (!updateStatusEl) return;
-    if (status === 'ready') {
-      updateStatusEl.textContent = 'Update ready - click to restart';
-      updateStatusEl.className = 'update-hint ready';
-      updateStatusEl.onclick = function () { window.timedoc.checkForUpdate(); };
-    } else if (status) {
-      updateStatusEl.textContent = status;
-      updateStatusEl.className = 'update-hint';
-    } else {
-      updateStatusEl.textContent = '';
-      updateStatusEl.className = 'update-hint';
+    if (!status || status === 'no-update') {
+      // No update - hide overlay, show app
+      if (updateOverlay) updateOverlay.style.display = 'none';
+      if (updateStatusEl) { updateStatusEl.textContent = ''; updateStatusEl.className = 'update-hint'; }
+      return;
+    }
+
+    if (status === 'checking') {
+      if (updateOverlay) updateOverlay.style.display = 'flex';
+      if (updateProgress) updateProgress.textContent = 'Checking for updates...';
+      if (updateBar) updateBar.style.width = '0%';
+    } else if (status === 'downloading') {
+      if (updateOverlay) updateOverlay.style.display = 'flex';
+      if (updateProgress) updateProgress.textContent = 'Downloading update...';
+    } else if (typeof status === 'object' && status.percent !== undefined) {
+      if (updateOverlay) updateOverlay.style.display = 'flex';
+      if (updateProgress) updateProgress.textContent = 'Downloading update: ' + Math.round(status.percent) + '%';
+      if (updateBar) updateBar.style.width = Math.round(status.percent) + '%';
+    } else if (status === 'installing') {
+      if (updateOverlay) updateOverlay.style.display = 'flex';
+      if (updateProgress) updateProgress.textContent = 'Installing update...';
+      if (updateBar) updateBar.style.width = '100%';
+    } else if (status === 'ready') {
+      if (updateStatusEl) {
+        updateStatusEl.textContent = 'Update ready - restarting...';
+        updateStatusEl.className = 'update-hint ready';
+      }
     }
   });
 }

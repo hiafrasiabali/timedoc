@@ -101,7 +101,10 @@ function createTray() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
-  setupAutoUpdater();
+  // Wait for renderer to be ready before checking updates
+  mainWindow.webContents.on('did-finish-load', () => {
+    setupAutoUpdater();
+  });
 });
 
 function setupAutoUpdater() {
@@ -109,34 +112,39 @@ function setupAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
-    sendToRenderer('update:status', 'Checking for updates...');
+    sendToRenderer('update:status', 'checking');
   });
 
-  autoUpdater.on('update-available', (info) => {
-    sendToRenderer('update:status', 'Downloading v' + info.version + '...');
+  autoUpdater.on('update-available', () => {
+    sendToRenderer('update:status', 'downloading');
   });
 
   autoUpdater.on('update-not-available', () => {
-    sendToRenderer('update:status', '');
+    sendToRenderer('update:status', 'no-update');
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    sendToRenderer('update:status', 'Downloading update: ' + Math.round(progress.percent) + '%');
+    sendToRenderer('update:status', { percent: progress.percent });
   });
 
-  autoUpdater.on('update-downloaded', (info) => {
-    sendToRenderer('update:status', 'ready');
-    // Auto-install immediately - no waiting
-    app.isQuitting = true;
-    autoUpdater.quitAndInstall(true, true);
+  autoUpdater.on('update-downloaded', () => {
+    sendToRenderer('update:status', 'installing');
+    // Force install immediately
+    setTimeout(() => {
+      app.isQuitting = true;
+      autoUpdater.quitAndInstall(true, true);
+    }, 1000);
   });
 
   autoUpdater.on('error', () => {
-    sendToRenderer('update:status', '');
+    sendToRenderer('update:status', 'no-update');
   });
 
   // Force check immediately on app open
-  autoUpdater.checkForUpdates().catch(() => {});
+  autoUpdater.checkForUpdates().catch(() => {
+    sendToRenderer('update:status', 'no-update');
+  });
+  // Also check every 30 min in background
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 30 * 60 * 1000);
 }
 
