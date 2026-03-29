@@ -90,7 +90,7 @@ export default function EmployeeDetail() {
   const TZ = 'Asia/Karachi';
   const groupedByHour = {};
   allChunks.forEach((c) => {
-    const d = new Date(c.start_time);
+    const d = new Date(c.start_time.includes('T') ? c.start_time : c.start_time.replace(' ', 'T') + 'Z');
     const parts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true, timeZone: TZ }).formatToParts(d);
     const hourVal = parts.find(p => p.type === 'hour').value;
     const ampm = parts.find(p => p.type === 'dayPeriod').value;
@@ -172,7 +172,7 @@ export default function EmployeeDetail() {
                   <div className="timeline-hour">{hour}</div>
                   <div className="screenshot-grid">
                     {chunks.map((c) => {
-                      const time = new Date(c.start_time);
+                      const time = new Date(c.start_time.includes('T') ? c.start_time : c.start_time.replace(' ', 'T') + 'Z');
                       const timeStr = time.toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
                       return (
                         <div

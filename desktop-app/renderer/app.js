@@ -1,4 +1,4 @@
-var APP_VERSION = '1.8.1';
+var APP_VERSION = '1.8.2';
 
 // ---- State ----
 var serverUrl = '';
@@ -46,6 +46,14 @@ var versionDisplay = document.getElementById('version-display');
 
 if (versionDisplay) versionDisplay.textContent = 'v' + APP_VERSION;
 
+// ---- PKT time helper ----
+function pktNow() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+}
+function pktDateStr() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+}
+
 // ---- API helper ----
 function api(method, path, body) {
   return window.timedoc.apiCall(method, path, body || {}).then(function (result) {
@@ -64,10 +72,10 @@ function showScreen(screen) {
 // ---- Work Dates ----
 function populateWorkDates() {
   workDateSelect.innerHTML = '';
-  var today = new Date();
+  var todayPkt = pktNow();
   for (var i = 0; i < 7; i++) {
-    var d = new Date(today);
-    d.setDate(today.getDate() - i);
+    var d = new Date(todayPkt);
+    d.setDate(todayPkt.getDate() - i);
     var dateStr = d.toISOString().slice(0, 10);
     var label = i === 0 ? dateStr + ' (Today)' : i === 1 ? dateStr + ' (Yesterday)' : dateStr;
     var opt = document.createElement('option');
@@ -141,7 +149,7 @@ function startNewChunk(stream) {
   chunkNumber++;
   var myChunks = [];
   recordedChunks = myChunks;
-  chunkStartTime = new Date().toISOString();
+  chunkStartTime = new Date().toISOString(); // UTC for server storage
   try {
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 200000 });
   } catch (e) {
