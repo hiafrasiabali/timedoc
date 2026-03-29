@@ -74,6 +74,12 @@ router.post('/upload', authMiddleware, upload.single('chunk'), async (req, res) 
   const fileSizeMb = stat.size / (1024 * 1024);
   const relativePath = path.relative(UPLOADS_DIR, finalPath);
 
+  // Use server time (ignore client clock which may be wrong)
+  const serverNow = new Date();
+  const chunkDurationMs = 5 * 60 * 1000;
+  const serverEnd = serverNow.toISOString();
+  const serverStart = new Date(serverNow - chunkDurationMs).toISOString();
+
   const result = db.prepare(
     `INSERT INTO recording_chunks (session_id, chunk_number, file_path, file_size_mb, start_time, end_time)
      VALUES (?, ?, ?, ?, ?, ?)`
@@ -82,8 +88,8 @@ router.post('/upload', authMiddleware, upload.single('chunk'), async (req, res) 
     chunk_number,
     relativePath,
     Math.round(fileSizeMb * 100) / 100,
-    start_time || new Date().toISOString(),
-    end_time || new Date().toISOString()
+    serverStart,
+    serverEnd
   );
 
   res.status(201).json({
