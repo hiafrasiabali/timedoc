@@ -75,10 +75,21 @@ router.post('/upload', authMiddleware, upload.single('chunk'), async (req, res) 
   const relativePath = path.relative(UPLOADS_DIR, finalPath);
 
   // Use server time (ignore client clock which may be wrong)
-  const serverNow = new Date();
-  const chunkDurationMs = 5 * 60 * 1000;
-  const serverEnd = serverNow.toISOString();
-  const serverStart = new Date(serverNow - chunkDurationMs).toISOString();
+  const serverEnd = new Date().toISOString();
+
+  // Start time = previous chunk's end time, or session start for chunk 1
+  const prevChunk = db.prepare(
+    'SELECT end_time FROM recording_chunks WHERE session_id = ? AND chunk_number = ?'
+  ).get(session_id, Number(chunk_number) - 1);
+
+  let serverStart;
+  if (prevChunk) {
+    serverStart = prevChunk.end_time;
+  } else {
+    // First chunk - use session start time
+    const sess = db.prepare('SELECT start_time FROM sessions WHERE id = ?').get(session_id);
+    serverStart = sess ? (sess.start_time.includes('T') ? sess.start_time : sess.start_time.replace(' ', 'T') + 'Z') : serverEnd;
+  }
 
   const result = db.prepare(
     `INSERT INTO recording_chunks (session_id, chunk_number, file_path, file_size_mb, start_time, end_time)
