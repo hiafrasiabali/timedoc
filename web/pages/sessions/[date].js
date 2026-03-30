@@ -93,8 +93,10 @@ export default function SessionDatePage() {
               </div>
               <div className="screenshot-grid">
                 {group.chunks.map((c) => {
-                  const time = new Date(c.start_time.includes('T') ? c.start_time : c.start_time.replace(' ', 'T') + 'Z');
-                  const timeStr = time.toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
+                  const tStart = new Date(c.start_time.includes('T') ? c.start_time : c.start_time.replace(' ', 'T') + 'Z');
+                  const tEnd = new Date(c.end_time.includes('T') ? c.end_time : c.end_time.replace(' ', 'T') + 'Z');
+                  const fmt = { hour: 'numeric', minute: '2-digit', timeZone: TZ };
+                  const timeStr = tStart.toLocaleTimeString('en-PK', fmt) + ' - ' + tEnd.toLocaleTimeString('en-PK', fmt);
                   return (
                     <div
                       key={c.id}
