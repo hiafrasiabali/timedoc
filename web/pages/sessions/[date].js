@@ -99,6 +99,13 @@ export default function SessionDatePage() {
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border)' }}>
+                <td colSpan={3} style={{ textAlign: 'right' }}>Total</td>
+                <td>{formatMinutes(totalMinutes)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
