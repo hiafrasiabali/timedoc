@@ -156,9 +156,48 @@ export default function EmployeeDetail() {
         )}
       </div>
 
-      {selectedDate && (
+      {selectedDate && (() => {
+        const dayInfo = dailyData.find(d => d.date === selectedDate);
+        const TZ_S = 'Asia/Karachi';
+        const fmt = { hour: 'numeric', minute: '2-digit', timeZone: TZ_S };
+        return (
         <div style={{ marginTop: 24 }}>
           <h3 style={{ marginBottom: 16 }}>Activity - {selectedDate}</h3>
+
+          {dayInfo && dayInfo.sessions.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="stat-grid">
+                <div className="stat-card">
+                  <div className="value">{formatMinutes(dayInfo.totalMinutes)}</div>
+                  <div className="label">Total Worked</div>
+                </div>
+                <div className="stat-card">
+                  <div className="value">{dayInfo.sessionCount}</div>
+                  <div className="label">Session{dayInfo.sessionCount !== 1 ? 's' : ''}</div>
+                </div>
+              </div>
+              <table>
+                <thead>
+                  <tr><th>Session</th><th>Start</th><th>End</th><th>Duration</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {dayInfo.sessions.map((s, i) => {
+                    const st = new Date(s.start_time.includes('T') ? s.start_time : s.start_time.replace(' ', 'T') + 'Z');
+                    const en = s.end_time ? new Date(s.end_time.includes('T') ? s.end_time : s.end_time.replace(' ', 'T') + 'Z') : null;
+                    return (
+                      <tr key={s.id}>
+                        <td>#{i + 1}</td>
+                        <td>{st.toLocaleTimeString('en-PK', fmt)}</td>
+                        <td>{en ? en.toLocaleTimeString('en-PK', fmt) : 'Running'}</td>
+                        <td>{formatMinutes(s.duration_minutes || 0)}</td>
+                        <td><span className={'badge ' + (s.status === 'active' ? 'badge-online' : s.status === 'completed' ? 'badge-offline' : 'badge-admin')}>{s.status}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {chunksLoading ? (
             <p style={{ color: 'var(--text-light)' }}>Loading recordings...</p>
@@ -208,7 +247,8 @@ export default function EmployeeDetail() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {playingChunk && (
         <VideoPlayer chunkId={playingChunk} onClose={() => setPlayingChunk(null)} />

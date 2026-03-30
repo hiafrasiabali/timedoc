@@ -77,6 +77,32 @@ export default function SessionDatePage() {
         </button>
       </div>
 
+      {!loading && sessions.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <table>
+            <thead>
+              <tr><th>Session</th><th>Start</th><th>End</th><th>Duration</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {sessions.map((s, i) => {
+                const st = new Date(s.start_time.includes('T') ? s.start_time : s.start_time.replace(' ', 'T') + 'Z');
+                const en = s.end_time ? new Date(s.end_time.includes('T') ? s.end_time : s.end_time.replace(' ', 'T') + 'Z') : null;
+                const fmt = { hour: 'numeric', minute: '2-digit', timeZone: TZ };
+                return (
+                  <tr key={s.id}>
+                    <td>#{i + 1}</td>
+                    <td>{st.toLocaleTimeString('en-PK', fmt)}</td>
+                    <td>{en ? en.toLocaleTimeString('en-PK', fmt) : 'Running'}</td>
+                    <td>{formatMinutes(s.duration_minutes || 0)}</td>
+                    <td><span className={'badge ' + (s.status === 'active' ? 'badge-online' : 'badge-offline')}>{s.status}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {loading ? (
         <p style={{ color: 'var(--text-light)' }}>Loading...</p>
       ) : allChunks.length === 0 ? (
