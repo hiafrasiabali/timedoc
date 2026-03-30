@@ -43,20 +43,21 @@ export default function SessionDatePage() {
     }
   };
 
-  // Group chunks by hour in PKT
+  // Group chunks by date + hour in PKT
   const TZ = 'Asia/Karachi';
   const groupedByHour = {};
   allChunks.forEach((c) => {
     const d = new Date(c.start_time.includes('T') ? c.start_time : c.start_time.replace(' ', 'T') + 'Z');
+    const datePkt = d.toLocaleDateString('en-CA', { timeZone: TZ });
     const parts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true, timeZone: TZ }).formatToParts(d);
     const hourVal = parts.find(p => p.type === 'hour').value;
     const ampm = parts.find(p => p.type === 'dayPeriod').value;
-    const key = `${hourVal} ${ampm}`;
-    if (!groupedByHour[key]) groupedByHour[key] = [];
-    groupedByHour[key].push(c);
+    const key = datePkt + '|' + hourVal + ' ' + ampm;
+    if (!groupedByHour[key]) groupedByHour[key] = { date: datePkt, hour: hourVal + ' ' + ampm, chunks: [] };
+    groupedByHour[key].chunks.push(c);
   });
 
-  const hourGroups = Object.entries(groupedByHour);
+  const hourGroups = Object.values(groupedByHour);
 
   // Summary
   const totalMinutes = sessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
@@ -84,11 +85,14 @@ export default function SessionDatePage() {
         </div>
       ) : (
         <div className="timeline-container">
-          {hourGroups.map(([hour, chunks]) => (
-            <div key={hour} className="timeline-section">
-              <div className="timeline-hour">{hour}</div>
+          {hourGroups.map((group) => (
+            <div key={group.date + group.hour} className="timeline-section">
+              <div className="timeline-hour">
+                <div className="timeline-date">{group.date}</div>
+                <div>{group.hour}</div>
+              </div>
               <div className="screenshot-grid">
-                {chunks.map((c) => {
+                {group.chunks.map((c) => {
                   const time = new Date(c.start_time.includes('T') ? c.start_time : c.start_time.replace(' ', 'T') + 'Z');
                   const timeStr = time.toLocaleTimeString('en-PK', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
                   return (
@@ -134,13 +138,19 @@ export default function SessionDatePage() {
           gap: 20px;
         }
         .timeline-hour {
-          width: 70px;
+          width: 90px;
           flex-shrink: 0;
           font-size: 0.875rem;
           font-weight: 600;
           color: var(--text-light);
           padding-top: 8px;
           text-align: right;
+        }
+        .timeline-date {
+          font-size: 0.7rem;
+          font-weight: 500;
+          color: #94a3b8;
+          margin-bottom: 2px;
         }
         .screenshot-grid {
           flex: 1;
